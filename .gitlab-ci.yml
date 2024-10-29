@@ -9,7 +9,7 @@ variables:
 .test: &test
   stage: test
   script:
-    - python -m pip install ."[NEMO-CE]"
+    - python -m pip install ."[NEMO]"
     - python ./run_tests.py
 
 

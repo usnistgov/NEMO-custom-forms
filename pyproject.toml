@@ -7,8 +7,13 @@ readme = "README.md"
 authors = [{name = "Center for Nanoscale Science and Technology", email = "CNSTapplications@nist.gov"}]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "Environment :: Web Environment",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: System Administrators",
+    "License :: Public Domain",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Framework :: Django :: 4.2",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -19,13 +24,12 @@ requires-python = ">=3.8"
 dependencies = [
     "django",
 ]
-license = {text = "MIT"}
+license = {text = "NIST"}
 
 [project.urls]
-Homepage = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms"
-Changelog = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms/-/releases"
-Issues = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms/-/issues"
-CI = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms/-/pipelines"
+Homepage = "https://github.com/usnistgov/NEMO-custom-forms"
+Changelog = "https://github.com/usnistgov/NEMO-custom-forms/releases"
+Issues = "https://github.com/usnistgov/NEMO-custom-forms/issues"
 
 [project.optional-dependencies]
 NEMO-CE = ["NEMO-CE>=6.0.0",]
