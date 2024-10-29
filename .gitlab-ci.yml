@@ -1,0 +1,57 @@
+stages:
+  - test
+  - build
+
+variables:
+  GIT_STRATEGY: clone
+
+
+.test: &test
+  stage: test
+  script:
+    - python -m pip install ."[NEMO-CE]"
+    - python ./run_tests.py
+
+
+Test python 3.8:
+  <<: *test
+  image: python:3.8
+
+Test python 3.9:
+  <<: *test
+  image: python:3.9
+
+Test python 3.10:
+  <<: *test
+  image: python:3.10
+
+Test python 3.11:
+  <<: *test
+  image: python:3.11
+
+Test python 3.12:
+  <<: *test
+  image: python:3.12
+
+Build Package:
+  image: python:3
+  stage: build
+  script:
+    - sed -i "s/^version =.*/version = '$(git describe --tags --abbrev=0).dev0'/" pyproject.toml
+    - pip install --upgrade pip build
+    - python -m build
+  only:
+    refs:
+      - $CI_DEFAULT_BRANCH
+      - tags
+
+Release to PyPI:
+  image: python:3
+  stage: build
+  script:
+    - sed -i "s/^version =.*/version = '$(git describe --tags)'/" pyproject.toml
+    - pip install --upgrade pip build twine
+    - python -m build
+    - twine upload --user $PYPI_USER --password $PYPI_PASSWORD ./dist/NEMO_custom_forms*
+  only:
+    - tags

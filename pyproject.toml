@@ -1,0 +1,50 @@
+[project]
+name = "NEMO-custom-forms"
+version = "0.1.0"
+description = "Plugin for NEMO allowing creation, rendering and approval of custom forms for users/staff"
+keywords = ["NEMO"]
+readme = "README.md"
+authors = [{name = "Center for Nanoscale Science and Technology", email = "CNSTapplications@nist.gov"}]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "django",
+]
+license = {text = "MIT"}
+
+[project.urls]
+Homepage = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms"
+Changelog = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms/-/releases"
+Issues = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms/-/issues"
+CI = "https://gitlab.nist.gov/gitlab/nanofab/nemo-custom-forms/-/pipelines"
+
+[project.optional-dependencies]
+NEMO-CE = ["NEMO-CE>=6.0.0",]
+NEMO = ["NEMO>=6.0.0",]
+dev-tools = ["pre-commit", "djlint", "black"]
+
+[tool.setuptools.package-data]
+nemo_custom_forms = ["static/*", "templates/*"]
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+
+[tool.djlint]
+profile = "django"
+max_attribute_length=100
+max_line_length=120
+ignore = "H031"
