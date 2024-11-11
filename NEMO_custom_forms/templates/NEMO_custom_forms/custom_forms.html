@@ -1,0 +1,67 @@
+{% extends 'NEMO_custom_forms/custom_forms_base.html' %}
+{% load custom_tags_and_filters %}
+{% block add_button %}
+    {% if pdf_templates and user_can_add %}
+        {% url 'create_custom_form' as create_custom_form_url %}
+        {% button type="add" value="Add" url=create_custom_form_url %}
+    {% endif %}
+{% endblock %}
+{% block pagination_content %}
+    <table class="table table-bordered table-condensed table-align-middle table-striped table-hover thead-light"
+           style="margin-bottom: 0">
+        <thead>
+            <tr>
+                <th>{% include 'pagination/pagination_column.html' with order_by='form_number' name='Form number' %}</th>
+                <th>{% include 'pagination/pagination_column.html' with order_by='creation_time' name='Created' %}</th>
+                <th>{% include 'pagination/pagination_column.html' with order_by='created_by' name='Created by' %}</th>
+                <th>{% include 'pagination/pagination_column.html' with order_by='status' name='Status' %}</th>
+                <th class="text-right button-column-minimum">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for custom_form in page %}
+                <tr class="{% if custom_form.status == "DENIED" %}danger{% elif custom_form.status == "FULFILLED" %}success{% else %}default{% endif %}">
+                    <td>{{ custom_form.form_number|default_if_none:"" }}</td>
+                    <td>{{ custom_form.creation_time|date:"SHORT_DATE_FORMAT" }}</td>
+                    <td>{{ custom_form.creator }}</td>
+                    <td>{{ custom_form.get_status_display }}</td>
+                    <td class="text-right text-nowrap">
+                        {% url 'render_custom_form_pdf' custom_form.id as render_custom_form_pdf_url %}
+                        {% button size="small" type="export" value="Render pdf" url=render_custom_form_pdf_url %}
+                        {% if custom_form.notes %}
+                            {% button icon="glyphicon-info-sign" type="warn" size="small" value="Notes" title=custom_form.notes|default_if_none:""|linebreaksbr data_toggle="tooltip-notes" %}
+                        {% endif %}
+                        {% if custom_form.customformdocuments_set.all %}
+                            <form method="post" style="display: inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="title" value="{{ custom_form.name }} documents">
+                                {% for document in custom_form.customformdocuments_set.all %}
+                                    {% with content_type=document|content_type %}
+                                        <input type="hidden" name="document_info" value="{{ content_type.id }}__{{ document.id }}">
+                                    {% endwith %}
+                                {% endfor %}
+                                {% button icon="glyphicon-list-alt" size="small" type="export" value="Docs" onclick="document_view(this.form);" %}
+                            </form>
+                        {% endif %}
+                        {% if user_can_add or user in custom_form.next_approval_candidates %}
+                            {% url "edit_custom_form" custom_form.id as edit_custom_form_url %}
+                            {% button size="small" type="edit" value="Edit" url=edit_custom_form_url %}
+                        {% endif %}
+                        {% if custom_form.next_approval_level %}
+                            {% if user in custom_form.next_approval_candidates %}
+                                {% if self_approval_allowed or user != custom_form.creator %}
+                                    {% url 'approval_custom_form' custom_form.id as approval_custom_form_url %}
+                                    {% button size="small" type="info" value="Approve" url=approval_custom_form_url %}
+                                {% endif %}
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
+{% block table_empty_content %}
+    You do not have any custom forms.
+    {% if not pdf_templates %}<br>{% endif %}
+{% endblock %}

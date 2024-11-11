@@ -24,7 +24,7 @@ requires-python = ">=3.8"
 dependencies = [
     "django",
 ]
-license = {text = "NIST"}
+license = {file = "LICENSE"}
 
 [project.urls]
 Homepage = "https://github.com/usnistgov/NEMO-custom-forms"
@@ -36,8 +36,11 @@ NEMO-CE = ["NEMO-CE>=6.0.0",]
 NEMO = ["NEMO>=6.0.0",]
 dev-tools = ["pre-commit", "djlint", "black"]
 
+[tool.setuptools.packages.find]
+include = ["NEMO_custom_forms*"]
+
 [tool.setuptools.package-data]
-nemo_custom_forms = ["static/*", "templates/*"]
+NEMO_custom_forms = ["static/**/*", "templates/**/*"]
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]

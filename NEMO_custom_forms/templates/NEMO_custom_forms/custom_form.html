@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% load custom_tags_and_filters %}
+{% block title %}
+    {% if form.instance.id %}
+        Modify custom form
+    {% else %}
+        New custom form
+    {% endif %}
+{% endblock %}
+{% block content %}
+    <h1 class="form-group">
+        {% if form.instance.id %}
+            {% if approval_level %}
+                Custom form approval
+            {% else %}
+                Modify custom form
+            {% endif %}
+        {% else %}
+            New custom form
+        {% endif %}
+    </h1>
+    <form id="custom_form_form"
+          class="well"
+          action="{% if form.instance.id %}{% url 'edit_custom_form' form.instance.id %}{% else %}{% url 'create_custom_form_with_template' selected_template_id %}{% endif %}"
+          enctype="multipart/form-data"
+          method="post">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="form-group"></div>
+        {% if form.template_data.errors %}<div class="alert alert-danger">{{ form.template_data.errors }}</div>{% endif %}
+        {{ dynamic_form_fields }}
+        <div class="form-group">
+            <label for="notes" class="control-label">Notes</label>
+            {% if form.notes.errors %}- <span style="color:red">{{ form.notes.errors|striptags }}</span>{% endif %}
+            <textarea oninput="auto_size_textarea(this, 5);"
+                      class="form-control"
+                      name="notes"
+                      id="notes"
+                      maxlength="{{ form.fields.description.max_length }}"
+                      placeholder="Provide additional details if needed">{{ form.description.value|default_if_none:"" }}</textarea>
+        </div>
+        <div class="form-group">
+            <span class="control-label">Documents</span>
+            <div class="">
+                {% for d in form.instance.customformdocuments_set.all %}
+                    <div id="document_{{ d.id }}">
+                        {% if not readonly %}
+                            <a href="javascript:mark_document_for_removal('{{ d.id }}')"
+                               class="grey hover-black"
+                               title="Remove {{ d.filename }}"><span class="glyphicon glyphicon-remove-circle"></span></a>
+                        {% endif %}
+                        <a href="{{ d.document.url }}" target="_blank" style="margin-right: 5px">{{ d.filename }}</a>
+                    </div>
+                {% empty %}
+                    <div class="form-control-static">This form doesn't have any documents.</div>
+                {% endfor %}
+                <div style="padding-top: 10px">
+                    <input aria-label="File upload" id="fileupload" type="file" name="form_documents" multiple>
+                </div>
+            </div>
+        </div>
+        {% if form.instance.get_status_display != "Fulfilled" %}
+            <div class="form-group row">
+                <div class="col-xs-6 text-left">
+                    {% if form.instance.id %}
+                        {% url 'cancel_custom_form' form.instance.id as cancel_custom_form_url %}
+                        {% button type="delete" submit=False title="Cancel form" icon="glyphicon-ban-circle" value="Cancel form" onclick="if (confirm('Are you sure you want to cancel this form?')) {window.location.href='"|concat:cancel_custom_form_url|concat:"' }" %}
+                    {% endif %}
+                </div>
+                <div class="col-xs-6 text-right">
+                    {% if user in form.instance.next_approval_candidates %}
+                        {% if self_approval_allowed or user != form.instance.creator %}
+                            {% button type="save" submit=False name="approve_form" title="Approve form" icon="glyphicon-ok-circle" value="Approve form" onclick="confirm_review_dialog(this);" %}
+                            {% button type="delete" submit=False name="deny_form" title="Deny form" icon="glyphicon-ban-circle" value="Deny form" onclick="confirm_review_dialog(this);" %}
+                        {% endif %}
+                    {% else %}
+                        {% button type="save" value=form.instance.id|yesno:"Save changes,Create form" %}
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </form>
+    <script>
+        window.addEventListener("load", function ()
+        {
+            auto_size_textarea($("#notes")[0], 5);
+        });
+        
+        function mark_document_for_removal(document_id)
+        {
+            $("#document_"+document_id).remove();
+            $("#custom_form_form").append('<input type="hidden" name="remove_documents" value="'+document_id+'" />');
+		}
+
+        function confirm_review_dialog(review_button, decision_text)
+        {
+            let decision = review_button.innerText.trim().toLowerCase();
+            decision_text = decision_text || decision
+            let dialog_text = "Are you sure you want to "+decision_text+" this request?";
+            if (confirm(dialog_text))
+            {
+                submit_and_disable(review_button)
+            }
+        }
+    </script>
+{% endblock %}

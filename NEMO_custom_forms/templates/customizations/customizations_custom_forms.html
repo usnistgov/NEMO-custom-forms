@@ -1,0 +1,231 @@
+{% load custom_tags_and_filters %}
+<div class="panel-body">
+    <form method="POST" action="{% url 'customize' 'custom_forms' %}" class="form-horizontal">
+        {% csrf_token %}
+        <h3 class="customization-section-title">Permissions</h3>
+        <div class="form-group">
+            <label class="control-label col-xs-4 col-md-3">View permissions</label>
+            <div class="col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_view_staff"
+                               {% if custom_forms_view_staff %}checked{% endif %}
+                               value="enabled">
+                        Technical staff
+                    </label>
+                    <br />
+                </div>
+            </div>
+            <div class="col-xs-offset-4 col-md-offset-3 col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_view_user_office"
+                               {% if custom_forms_view_user_office %}checked{% endif %}
+                               value="enabled">
+                        User office
+                    </label>
+                    <br />
+                </div>
+            </div>
+            <div class="col-xs-offset-4 col-md-offset-3 col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_view_accounting_officer"
+                               {% if custom_forms_view_accounting_officer %}checked{% endif %}
+                               value="enabled">
+                        Accounting staff
+                    </label>
+                    <br />
+                </div>
+            </div>
+            <div class="col-xs-offset-4 col-md-offset-3 col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox" checked disabled>
+                        Facility managers
+                    </label>
+                    <br />
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-xs-4 col-md-3">Create permissions</label>
+            <div class="col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_create_staff"
+                               {% if custom_forms_create_staff %}checked{% endif %}
+                               value="enabled">
+                        Technical staff
+                    </label>
+                    <br />
+                </div>
+            </div>
+            <div class="col-xs-offset-4 col-md-offset-3 col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_create_user_office"
+                               {% if custom_forms_create_user_office %}checked{% endif %}
+                               value="enabled">
+                        User office
+                    </label>
+                    <br />
+                </div>
+            </div>
+            <div class="col-xs-offset-4 col-md-offset-3 col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_create_accounting_officer"
+                               {% if custom_forms_create_accounting_officer %}checked{% endif %}
+                               value="enabled">
+                        Accounting staff
+                    </label>
+                    <br />
+                </div>
+            </div>
+            <div class="col-xs-offset-4 col-md-offset-3 col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox" checked disabled>
+                        Facility managers
+                    </label>
+                    <br />
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-xs-4 col-md-3">Self approval</label>
+            <div class="col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_self_approval_allowed"
+                               {% if custom_forms_self_approval_allowed %}checked{% endif %}
+                               value="enabled">
+                        Allow the same person to create and approve a custom form
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="customization-separation" style="margin-bottom: 15px"></div>
+        <h3 class="customization-section-title">Form number</h3>
+        <div class="form-group">
+            <label class="control-label col-xs-4 col-md-3">Auto generate</label>
+            <div class="col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_number_template_enabled"
+                               id="custom_forms_number_template_enabled"
+                               onchange="toggle_custom_form_auto_numbering_enabled()"
+                               {% if custom_forms_number_template_enabled %}checked{% endif %}
+                               value="enabled">
+                        Auto generate form number
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="form-group" id="current_number_user">
+            <label class="control-label col-xs-4 col-md-3">Current number per form template</label>
+            <div class="col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <input type="hidden" name="custom_forms_number_template_template" value="off" />
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_number_template_template"
+                               {% if custom_forms_number_template_template == "enabled" %}checked{% endif %}
+                               value="enabled">
+                        Current number is separate for each form template
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-offset-3 col-xs-offset-4 col-xs-8 col-md-9 help-block light-grey">
+                This means every template will have its own count.
+            </div>
+        </div>
+        <div class="form-group" id="current_number_user">
+            <label class="control-label col-xs-4 col-md-3">Current number per user</label>
+            <div class="col-xs-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="custom_forms_number_template_user"
+                               {% if custom_forms_number_template_user %}checked{% endif %}
+                               value="enabled">
+                        Current number is separate for each user generating it
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-offset-3 col-xs-offset-4 col-xs-8 col-md-9 help-block light-grey">
+                This means each user generating an form number will have a separate count.
+            </div>
+        </div>
+        <div id="current_number_year">
+            <div class="form-group">
+                <label class="control-label col-xs-4 col-md-3">Current number per year</label>
+                <div class="col-xs-8 col-md-9">
+                    <div class="checkbox">
+                        <label>
+                            <input type="checkbox"
+                                   id="custom_forms_number_year"
+                                   onchange="toggle_custom_form_year()"
+                                   {% if custom_forms_number_template_year %}checked{% endif %}
+                                   value="enabled">
+                            Current number is separate for each year
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group" id="current_number_user_2">
+                <div class="col-md-offset-3 col-xs-offset-4 col-xs-4 col-md-3">
+                    <input type="text"
+                           name="custom_forms_number_template_year"
+                           id="custom_forms_number_template_year"
+                           class="form-control"
+                           value="{{ custom_forms_number_template_year }}">
+                </div>
+                <div class="col-md-offset-3 col-xs-offset-4 col-xs-8 col-md-9 help-block light-grey">
+                    This means each time this field is changed to a new year, a separate count is created. If both this and count by user are enabled, then each user will have a separate count every time this is changed
+                </div>
+            </div>
+        </div>
+        {% for current_number_key, current_number_value in current_numbers.items %}
+            {{ current_number_key }}: {{ current_number_value }}
+            <br>
+        {% endfor %}
+        <div class="customization-separation" style="margin-bottom: 15px"></div>
+        <div class="text-center">{% button type="save" value="Save settings" %}</div>
+    </form>
+</div>
+<script>
+    function toggle_custom_form_auto_numbering_enabled()
+    {
+        let enabled_checkbox = $("#custom_forms_number_template_enabled")[0];
+        if (enabled_checkbox)
+        {
+            $("#current_number_year, #current_number_user").toggle(enabled_checkbox.checked);
+        }
+    }
+    
+    function toggle_custom_form_year()
+    {
+        let year_enabled_checkbox = $("#custom_forms_number_year")[0];
+        if (year_enabled_checkbox)
+        {
+            if (!year_enabled_checkbox.checked)
+            {
+                $("#custom_forms_number_template_year").val("")
+            }
+            $("#current_number_user_2").toggle(year_enabled_checkbox.checked);
+        }
+    }
+
+    toggle_custom_form_auto_numbering_enabled();
+    toggle_custom_form_year();
+</script>

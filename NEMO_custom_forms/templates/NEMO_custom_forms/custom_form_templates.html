@@ -1,0 +1,44 @@
+{% extends 'NEMO_custom_forms/custom_forms_base.html' %}
+{% load custom_tags_and_filters %}
+{% block add_button %}
+    {% admin_add_url 'custom_forms' 'customformpdftemplate' request.path as add_custom_form_template_url %}
+    {% if add_custom_form_template_url %}
+        {% button type="add" value="Add" url=add_custom_form_template_url %}
+    {% endif %}
+{% endblock %}
+{% block pagination_content %}
+    <table class="table table-bordered table-condensed table-align-middle table-striped table-hover thead-light"
+           style="margin-bottom: 0">
+        <thead>
+            <tr>
+                <th>{% include 'pagination/pagination_column.html' with order_by='name' name='Name' %}</th>
+                <th>{% include 'pagination/pagination_column.html' with order_by='form' name='PDF' %}</th>
+                <th>Special mappings</th>
+                <th>Approvals</th>
+                <th class="text-right button-column-minimum">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for custom_form_template in page %}
+                <tr>
+                    <td>{{ custom_form_template.name }}</td>
+                    <td>
+                        {% with content_type=custom_form_template|content_type %}
+                            <a href="#"
+                               onclick="open_doc('{% url 'media_view' popup='true' content_type_id=content_type.id document_id=custom_form_template.id %}')">{{ custom_form_template.filename }}</a>
+                        {% endwith %}
+                    </td>
+                    <td>{{ custom_form_template.special_mappings_display|safe|linebreaksbr }}</td>
+                    <td>{{ custom_form_template.approvals_display|safe|linebreaksbr }}</td>
+                    <td class="text-right text-nowrap">
+                        {% admin_edit_url custom_form_template request.path as change_custom_form_template_url %}
+                        {% if change_custom_form_template_url %}
+                            {% button size="small" type="edit" value="Edit" url=change_custom_form_template_url %}
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
+{% block table_empty_content %}You do not have any custom forms.{% endblock %}
