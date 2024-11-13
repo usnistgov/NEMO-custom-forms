@@ -5,12 +5,19 @@ import os
 import re
 from typing import KeysView, List, Optional, Set
 
+from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH
+from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
+from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
+from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
+from NEMO.widgets.dynamic_form import get_submitted_user_inputs, validate_dynamic_form_model
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
+from django.template import Context, Template
 from django.template.defaultfilters import yesno
 from django.utils import timezone
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
 from NEMO_custom_forms.customization import CustomFormCustomization
@@ -20,10 +27,12 @@ from NEMO_custom_forms.pdf_utils import (
     pdf_form_field_states_for_field,
     validate_is_pdf_form,
 )
-from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, SerializationByNameModel, User
-from NEMO.utilities import document_filename_upload, format_datetime
-from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
-from NEMO.widgets.dynamic_form import get_submitted_user_inputs, validate_dynamic_form_model
+from NEMO_custom_forms.utilities import (
+    CUSTOM_FORM_CURRENT_NUMBER_PREFIX,
+    CUSTOM_FORM_GROUP_PREFIX,
+    CUSTOM_FORM_TEMPLATE_PREFIX,
+    CUSTOM_FORM_USER_PREFIX,
+)
 
 re_ends_with_number = r"\d+$"
 
@@ -31,7 +40,7 @@ re_ends_with_number = r"\d+$"
 class CustomFormPDFTemplate(SerializationByNameModel):
     enabled = models.BooleanField(default=True)
     name = models.CharField(
-        max_length=CHAR_FIELD_MAXIMUM_LENGTH, unique=True, help_text=_("The unique name for this form template")
+        max_length=CHAR_FIELD_MEDIUM_LENGTH, unique=True, help_text=_("The unique name for this form template")
     )
     form = models.FileField(
         upload_to=document_filename_upload, validators=[validate_is_pdf_form], help_text=_("The pdf form")
@@ -97,6 +106,51 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     def __str__(self):
         return self.name
 
+    class Meta:
+        ordering = ["name"]
+
+
+class CustomFormAutomaticNumbering(BaseModel):
+    template = models.OneToOneField(CustomFormPDFTemplate, on_delete=models.CASCADE)
+    enabled = models.BooleanField(
+        default=True, help_text=_("Uncheck this box to disable the automatic numbering sequence for this template")
+    )
+    numbering_group = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "Optional. Use this field (with the year number for example) to create separate numbering sequences when its value is changed."
+        ),
+    )
+    numbering_per_user = models.BooleanField(
+        default=False,
+        help_text="Check this box to maintain a separate numbering sequence for each user who generates it.",
+    )
+    numbering_template = models.CharField(
+        max_length=CHAR_FIELD_LARGE_LENGTH,
+        default="{{ current_number|stringformat:'04d' }}",
+        help_text=_(
+            mark_safe(
+                '<div style="margin-top: 10px">The numbering template. Provided variables include: <ul style="margin-left: 20px"><li style="list-style: inherit"><b>custom_form_template</b>: the custom form template instance</li><li style="list-style: inherit"><b>custom_form</b>: the custom form intance</li><li style="list-style: inherit"><b>user</b>: the user triggering the sequence</li><li style="list-style: inherit"><b>numbering_group</b>: the numbering group for this sequence</li><li style="list-style: inherit"><b>current_number</b>: the current number for this sequence</li></ul></div>'
+            )
+        ),
+    )
+
+    def clean(self):
+        try:
+            fake_user = User(first_name="Testy", last_name="McTester", email="testy_mctester@gmail.com", id=1)
+            fake_template = CustomFormPDFTemplate(name="Test", id=1, customformautomaticnumbering=self)
+            fake_form = CustomForm(template=fake_template, id=1)
+            fake_form.next_custom_form_number(fake_user, save=False)
+        except Exception as e:
+            raise ValidationError(str(e))
+
+    def __str__(self):
+        return f"{self.template.name} automatic numbering"
+
+    class Meta:
+        ordering = ["template__name"]
+
 
 class CustomFormApprovalLevel(BaseModel):
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
@@ -104,7 +158,7 @@ class CustomFormApprovalLevel(BaseModel):
         help_text=_("The approval level number. Approval will be asked in ascending order")
     )
     permission = models.CharField(
-        max_length=CHAR_FIELD_MAXIMUM_LENGTH, help_text=_("The role/permission required for users to approve")
+        max_length=CHAR_FIELD_MEDIUM_LENGTH, help_text=_("The role/permission required for users to approve")
     )
     can_edit_form = models.BooleanField(
         default=True, help_text=_("Check this box if the reviewer can make changes to the form")
@@ -385,6 +439,31 @@ class CustomForm(BaseModel):
         self.cancellation_time = timezone.now()
         self.cancellation_reason = reason
         self.save()
+
+    def next_custom_form_number(self, user: User, save=False) -> str:
+        automatic_numbering: CustomFormAutomaticNumbering = getattr(self.template, "customformautomaticnumbering", None)
+        if automatic_numbering and automatic_numbering.enabled:
+            current_number_customization = (
+                f"{CUSTOM_FORM_CURRENT_NUMBER_PREFIX}_{CUSTOM_FORM_TEMPLATE_PREFIX}{self.template.id}"
+            )
+            if automatic_numbering.numbering_group:
+                current_number_customization += f"_{CUSTOM_FORM_GROUP_PREFIX}{automatic_numbering.numbering_group}"
+            if automatic_numbering.numbering_per_user:
+                current_number_customization += f"_{CUSTOM_FORM_USER_PREFIX}{user.id}"
+            current_number = Customization.objects.filter(name=current_number_customization).first()
+            current_number_value = quiet_int(current_number.value, 0) if current_number else 0
+            current_number_value += 1
+            context = {
+                "custom_form_template": self.template,
+                "custom_form": self,
+                "user": user,
+                "numbering_group": automatic_numbering.numbering_group or "",
+                "current_number": current_number_value,
+            }
+            if save:
+                Customization(name=current_number_customization, value=current_number_value).save()
+            form_number = Template(automatic_numbering.numbering_template).render(Context(context))
+            return form_number
 
     def __str__(self):
         return f"{self.name} by {self.creator}"

@@ -8,6 +8,7 @@ from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormApproval,
     CustomFormApprovalLevel,
+    CustomFormAutomaticNumbering,
     CustomFormDocumentType,
     CustomFormDocuments,
     CustomFormPDFTemplate,
@@ -15,6 +16,8 @@ from NEMO_custom_forms.models import (
 )
 from NEMO.fields import DatalistWidget
 from NEMO.widgets.dynamic_form import DynamicForm
+
+from NEMO_custom_forms.utilities import custom_forms_current_numbers
 
 
 class CustomFormApprovalLevelFormset(forms.BaseInlineFormSet):
@@ -106,3 +109,18 @@ class CustomFormAdmin(admin.ModelAdmin):
         "cancelled",
     ]
     date_hierarchy = "last_updated"
+
+
+@admin.register(CustomFormAutomaticNumbering)
+class CustomFormAutomaticNumberingAdmin(admin.ModelAdmin):
+    list_display = ["template", "enabled", "numbering_group", "numbering_per_user"]
+    list_filter = ["enabled", "numbering_per_user"]
+    readonly_fields = ["custom_form_numbers"]
+
+    def custom_form_numbers(self, obj: CustomFormAutomaticNumbering):
+        current_number = custom_forms_current_numbers(obj.template)
+        if current_number:
+            number_list = "".join([f"<li>{item}</li>" for item in current_number])
+            return mark_safe(f"Current form numbers:<ul>{number_list}</ul>")
+        else:
+            return "No current form numbers recorded"
