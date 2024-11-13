@@ -1,9 +1,15 @@
 from NEMO.models import Customization
 from NEMO.tests.test_utilities import create_user_and_project
 from django.apps import apps
+from django.contrib.auth.models import Group
 from django.test import TestCase
 
-from NEMO_custom_forms.models import CustomForm, CustomFormAutomaticNumbering, CustomFormPDFTemplate
+from NEMO_custom_forms.models import (
+    CustomForm,
+    CustomFormApprovalLevel,
+    CustomFormAutomaticNumbering,
+    CustomFormPDFTemplate,
+)
 from NEMO_custom_forms.utilities import CUSTOM_FORM_CURRENT_NUMBER_PREFIX, custom_forms_current_numbers
 
 
@@ -175,3 +181,21 @@ class CustomFormsTest(TestCase):
         self.assertEqual({"24": {str(self.user.id): "1"}}, custom_forms_current_numbers(custom_form_template_2))
         # reset all custom form settings
         Customization.objects.filter(name__startswith=CUSTOM_FORM_CURRENT_NUMBER_PREFIX).delete()
+
+    def test_approval_role(self):
+        custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 11", id=11)
+        approval_level: CustomFormApprovalLevel = CustomFormApprovalLevel.objects.create(
+            template=custom_form_template, level=1
+        )
+        approval_level.role = "is_staff"
+        approval_level.save()
+        self.assertNotIn(self.user, approval_level.reviewers())
+        self.staff_user, self.staff_project = create_user_and_project(is_staff=True)
+        self.assertIn(self.staff_user, approval_level.reviewers())
+        new_group = Group.objects.create(name="New Group")
+        approval_level.role = new_group.name
+        approval_level.save()
+        self.assertNotIn(self.staff_user, approval_level.reviewers())
+        self.user.groups.add(new_group)
+        self.assertNotIn(self.staff_user, approval_level.reviewers())
+        self.assertIn(self.user, approval_level.reviewers())

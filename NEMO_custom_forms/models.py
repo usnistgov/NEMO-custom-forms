@@ -10,10 +10,9 @@ from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customizatio
 from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
 from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
 from NEMO.widgets.dynamic_form import get_submitted_user_inputs, validate_dynamic_form_model
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q
 from django.template import Context, Template
 from django.template.defaultfilters import yesno
 from django.utils import timezone
@@ -21,6 +20,7 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
 from NEMO_custom_forms.customization import CustomFormCustomization
+from NEMO_custom_forms.fields import RoleGroupPermissionChoiceField
 from NEMO_custom_forms.pdf_utils import (
     copy_and_fill_pdf_form,
     pdf_form_field_names,
@@ -78,7 +78,7 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     def approvals_display(self):
         return "<br>".join(
             [
-                f"Level {approval.level} approval: {approval.get_permission_display()}"
+                f"Level {approval.level} approval: {approval.get_role_display()}"
                 for approval in self.customformapprovallevel_set.all()
             ]
         )
@@ -157,8 +157,10 @@ class CustomFormApprovalLevel(BaseModel):
     level = models.PositiveIntegerField(
         help_text=_("The approval level number. Approval will be asked in ascending order")
     )
-    permission = models.CharField(
-        max_length=CHAR_FIELD_MEDIUM_LENGTH, help_text=_("The role/permission required for users to approve")
+    role = models.CharField(
+        verbose_name="Role/Group",
+        max_length=CHAR_FIELD_MEDIUM_LENGTH,
+        help_text=_("The role/group required for users to approve"),
     )
     can_edit_form = models.BooleanField(
         default=True, help_text=_("Check this box if the reviewer can make changes to the form")
@@ -168,54 +170,28 @@ class CustomFormApprovalLevel(BaseModel):
         ordering = ["template", "level"]
         unique_together = ["template", "level"]
 
-    def clean(self):
-        permission_keys = [p[0] for p in self.permission_choices()]
-        if not self.permission or self.permission not in permission_keys:
-            raise ValidationError({"permission": f"You must select one of the available permission"})
-
     def reviewers(self) -> Set[User]:
-        if self.permission:
+        if self.role:
             active_users = User.objects.filter(is_active=True)
-            if self.permission == "is_staff":
+            if self.role == "is_staff":
                 return set(active_users.filter(is_staff=True))
-            elif self.permission == "is_user_office":
+            elif self.role == "is_user_office":
                 return set(active_users.filter(is_user_office=True))
-            elif self.permission == "is_accounting_officer":
+            elif self.role == "is_accounting_officer":
                 return set(active_users.filter(is_accounting_officer=True))
-            elif self.permission == "is_facility_manager":
+            elif self.role == "is_facility_manager":
                 return set(active_users.filter(is_facility_manager=True))
-            elif self.permission == "is_administrator":
+            elif self.role == "is_administrator":
                 return set(active_users.filter(is_administrator=True))
             else:
-                return set(
-                    active_users.filter(
-                        Q(user_permissions__codename=self.permission)
-                        | Q(user_permissions__group__permissions__codename=self.permission)
-                    )
-                )
+                return set(active_users.filter(groups__name=self.role))
         return set()
 
-    @classmethod
-    def permission_choices(cls):
-        role_choices = [
-            ("", "---------"),
-            ("is_staff", "Staff"),
-            ("is_user_office", "User Office"),
-            ("is_accounting_officer", "Accounting officers"),
-            ("is_facility_manager", "Facility managers"),
-            ("is_administrator", "Administrators"),
-        ]
-        permission_choices = [(p["codename"], p["name"]) for p in Permission.objects.values("name", "codename")]
-        return [*role_choices, *permission_choices]
-
-    def get_permission_display(self):
-        for key, value in self.permission_choices():
-            if key == self.permission:
-                return value
-        return ""
+    def get_role_display(self):
+        return RoleGroupPermissionChoiceField.role_display(self.role, roles=True, groups=True)
 
     def __str__(self):
-        return f"{self.template.name} level {self.level} approval: {self.get_permission_display()}"
+        return f"{self.template.name} level {self.level} approval: {self.get_role_display()}"
 
 
 class CustomFormSpecialMapping(BaseModel):

@@ -1,9 +1,11 @@
 import json
 
+from NEMO.widgets.dynamic_form import DynamicForm
 from django import forms
 from django.contrib import admin
 from django.utils.safestring import mark_safe
 
+from NEMO_custom_forms.fields import RoleGroupPermissionChoiceField
 from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormApproval,
@@ -14,9 +16,6 @@ from NEMO_custom_forms.models import (
     CustomFormPDFTemplate,
     CustomFormSpecialMapping,
 )
-from NEMO.fields import DatalistWidget
-from NEMO.widgets.dynamic_form import DynamicForm
-
 from NEMO_custom_forms.utilities import custom_forms_current_numbers
 
 
@@ -25,9 +24,7 @@ class CustomFormApprovalLevelFormset(forms.BaseInlineFormSet):
 
     def add_fields(self, form, index):
         super().add_fields(form, index)
-        form.fields["permission"] = forms.ChoiceField(
-            choices=CustomFormApprovalLevel.permission_choices(), widget=DatalistWidget
-        )
+        form.fields["role"] = RoleGroupPermissionChoiceField(roles=True, groups=True)
 
 
 class CustomFormSpecialMappingFormset(forms.BaseInlineFormSet):
