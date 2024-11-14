@@ -13,10 +13,6 @@ variables:
     - python ./run_tests.py
 
 
-Test python 3.8:
-  <<: *test
-  image: python:3.8
-
 Test python 3.9:
   <<: *test
   image: python:3.9
@@ -32,6 +28,10 @@ Test python 3.11:
 Test python 3.12:
   <<: *test
   image: python:3.12
+
+Test python 3.13:
+  <<: *test
+  image: python:3.13
 
 Build Package:
   image: python:3
