@@ -21,6 +21,7 @@ from NEMO_custom_forms.models import (
     CustomFormPDFTemplate,
     CustomFormAutomaticNumbering,
 )
+from NEMO_custom_forms.utilities import merge_documents
 
 
 def can_view_custom_forms(user) -> bool:
@@ -290,11 +291,16 @@ def render_custom_form_pdf(request, custom_form_id):
         or not can_create_custom_forms(user)
     ):
         return redirect("landing")
+
+    merged_pdf_bytes = merge_documents(
+        [custom_form.get_filled_pdf_template(), *custom_form.customformdocuments_set.all()]
+    )
+
     pdf_response = HttpResponse(content_type="application/pdf")
     pdf_response["Content-Disposition"] = (
         f"attachment; filename={slugify_underscore(custom_form.template.name)}_{custom_form.form_number}.pdf"
     )
-    pdf_response.write(custom_form.get_filled_pdf_template())
+    pdf_response.write(merged_pdf_bytes)
     return pdf_response
 
 
@@ -309,6 +315,5 @@ def form_fields_group(request, form_id, group_name):
 
 # TODO: figure out setting the form number automatically and having permissions for who can do it.
 # TODO: make form readonly when approving and not allowed to edit
-# TODO: concatenate all documents with the pdf form
 # TODO: make document upload work with type
 # TODO: add tabs for each template in list of forms
