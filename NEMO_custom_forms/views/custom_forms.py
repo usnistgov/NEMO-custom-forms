@@ -1,8 +1,16 @@
 from typing import Optional
 
+from NEMO.decorators import administrator_required
+from NEMO.exceptions import RequiredUnansweredQuestionsException
+from NEMO.models import User
+from NEMO.typing import QuerySetType
+from NEMO.utilities import BasicDisplayTable, export_format_datetime, format_datetime, slugify_underscore
+from NEMO.views.pagination import SortedPaginator
+from NEMO.widgets.dynamic_form import DynamicForm, render_group_questions
 from django import forms
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.http import HttpResponse
+from django.db import transaction
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -11,14 +19,8 @@ from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormDocuments,
     CustomFormPDFTemplate,
+    CustomFormAutomaticNumbering,
 )
-from NEMO.decorators import administrator_required
-from NEMO.exceptions import RequiredUnansweredQuestionsException
-from NEMO.models import User
-from NEMO.typing import QuerySetType
-from NEMO.utilities import BasicDisplayTable, export_format_datetime, format_datetime, slugify_underscore
-from NEMO.views.pagination import SortedPaginator
-from NEMO.widgets.dynamic_form import DynamicForm, render_group_questions
 
 
 def can_view_custom_forms(user) -> bool:
@@ -71,6 +73,19 @@ def can_edit_custom_form(user: User, custom_form: CustomForm) -> bool:
 
 
 class CustomFormForm(forms.ModelForm):
+
+    def __init__(self, *args, template: CustomFormPDFTemplate = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # remove the form number field if there is already a form number or if it should be generated automatically
+        existing_form_number = self.instance and self.instance.form_number
+        auto_generate = (
+            template
+            and hasattr(template, "customformautomaticnumbering")
+            and template.customformautomaticnumbering.enabled
+        )
+        if existing_form_number or auto_generate:
+            self.fields.pop("form_number")
+
     class Meta:
         model = CustomForm
         exclude = [
@@ -78,6 +93,8 @@ class CustomFormForm(forms.ModelForm):
             "template",
             "template_data",
             "creator",
+            "last_updated",
+            "last_updated_by",
             "cancelled",
             "cancelled_by",
             "cancellation_time",
@@ -174,7 +191,7 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
 
     edit = bool(custom_form)
 
-    form = CustomFormForm(request.POST or None, instance=custom_form)
+    form = CustomFormForm(request.POST or None, instance=custom_form, template=pdf_template)
 
     if edit and not can_edit_custom_form(user, custom_form):
         # because this can be a GET, we need to initialize cleaned_data
@@ -190,7 +207,7 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
         "dynamic_form_fields": DynamicForm(
             pdf_template.form_fields, custom_form.template_data if edit else None
         ).render("custom_form_fields_group", pdf_template.id),
-        "selected_template_id": pdf_template.id,
+        "selected_template": pdf_template,
         "approval_level": approval_level,
         "self_approval_allowed": CustomFormCustomization.get_bool("custom_forms_self_approval_allowed"),
     }
@@ -206,18 +223,30 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
 
             form.instance.last_updated_by = user
             form.instance.template = pdf_template
-            if not is_approval or approval_level.can_edit_form:
-                new_custom_form = form.save()
 
-                # Handle file uploads
-                for f in request.FILES.getlist("form_documents"):
-                    CustomFormDocuments.objects.create(document=f, custom_form=new_custom_form)
-                CustomFormDocuments.objects.filter(id__in=request.POST.getlist("remove_documents")).delete()
+            with transaction.atomic():
+                # all this need to happen at the same time or be rolled back
+                # auto-generate form number, form saving, and approval
 
-                # TODO: create_custom_form_notification(new_custom_form)
-                # TODO: send_custom_form_received_email(request, new_custom_form, edit)
-            if is_approval:
-                custom_form.process_approval(user, approval_level, is_approval == ["approve_form"])
+                automatic_numbering: CustomFormAutomaticNumbering = getattr(
+                    pdf_template, "customformautomaticnumbering", None
+                )
+                auto_generate_parameter = request.POST.get("auto_generate", "false") == "true"
+                if custom_form and not custom_form.form_number and automatic_numbering and auto_generate_parameter:
+                    form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
+
+                if not is_approval or approval_level.can_edit_form:
+                    new_custom_form = form.save()
+
+                    # Handle file uploads
+                    for f in request.FILES.getlist("form_documents"):
+                        CustomFormDocuments.objects.create(document=f, custom_form=new_custom_form)
+                    CustomFormDocuments.objects.filter(id__in=request.POST.getlist("remove_documents")).delete()
+
+                    # TODO: create_custom_form_notification(new_custom_form)
+                    # TODO: send_custom_form_received_email(request, new_custom_form, edit)
+                if is_approval:
+                    custom_form.process_approval(user, approval_level, is_approval == ["approve_form"])
             return redirect("custom_forms")
         else:
             if request.FILES.getlist("form_documents") or request.POST.get("remove_documents"):
@@ -226,6 +255,18 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
     # If GET request or form is not valid
     dictionary["form"] = form
     return render(request, "NEMO_custom_forms/custom_form.html", dictionary)
+
+
+@login_required
+@require_GET
+def generate_custom_form_number(request, custom_form_template_id):
+    custom_form_template = get_object_or_404(CustomFormPDFTemplate, pk=custom_form_template_id)
+    automatic_numbering: CustomFormAutomaticNumbering = getattr(
+        custom_form_template, "customformautomaticnumbering", None
+    )
+    if automatic_numbering:
+        return JsonResponse({"form_number": automatic_numbering.next_custom_form_number(request.user)})
+    return HttpResponseBadRequest("You are not allowed to generate this form number")
 
 
 @login_required
@@ -270,5 +311,4 @@ def form_fields_group(request, form_id, group_name):
 # TODO: make form readonly when approving and not allowed to edit
 # TODO: concatenate all documents with the pdf form
 # TODO: make document upload work with type
-# TODO: move customization numbering stuff into each template configuration
-# TODO: extract into its own plugin (including dependencies)
+# TODO: add tabs for each template in list of forms

@@ -89,6 +89,10 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     def filename(self):
         return os.path.basename(self.form.name)
 
+    def next_custom_form_number(self, user: User, save=False) -> str:
+        if hasattr(self, "customformautomaticnumbering"):
+            return self.customformautomaticnumbering.next_custom_form_number(user, save)
+
     def clean(self):
         if self.form_fields:
             errors = validate_dynamic_form_model(self.form_fields, "custom_form_fields_group", self.id)
@@ -131,17 +135,40 @@ class CustomFormAutomaticNumbering(BaseModel):
         default="{{ current_number|stringformat:'04d' }}",
         help_text=_(
             mark_safe(
-                '<div style="margin-top: 10px">The numbering template. Provided variables include: <ul style="margin-left: 20px"><li style="list-style: inherit"><b>custom_form_template</b>: the custom form template instance</li><li style="list-style: inherit"><b>custom_form</b>: the custom form intance</li><li style="list-style: inherit"><b>user</b>: the user triggering the sequence</li><li style="list-style: inherit"><b>numbering_group</b>: the numbering group for this sequence</li><li style="list-style: inherit"><b>current_number</b>: the current number for this sequence</li></ul></div>'
+                '<div style="margin-top: 10px">The numbering template. Provided variables include: <ul style="margin-left: 20px"><li style="list-style: inherit"><b>custom_form_template</b>: the custom form template instance</li><li style="list-style: inherit"><li style="list-style: inherit"><b>user</b>: the user triggering the sequence</li><li style="list-style: inherit"><b>numbering_group</b>: the numbering group for this sequence</li><li style="list-style: inherit"><b>current_number</b>: the current number for this sequence</li></ul></div>'
             )
         ),
     )
 
+    def next_custom_form_number(self, user: User, save=False) -> str:
+        automatic_numbering: CustomFormAutomaticNumbering = getattr(self.template, "customformautomaticnumbering", None)
+        can_generate_form_number = True  # TODO: Add this
+        if automatic_numbering and automatic_numbering.enabled and can_generate_form_number:
+            current_number_customization = (
+                f"{CUSTOM_FORM_CURRENT_NUMBER_PREFIX}_{CUSTOM_FORM_TEMPLATE_PREFIX}{self.template_id}"
+            )
+            if automatic_numbering.numbering_group:
+                current_number_customization += f"_{CUSTOM_FORM_GROUP_PREFIX}{automatic_numbering.numbering_group}"
+            if automatic_numbering.numbering_per_user:
+                current_number_customization += f"_{CUSTOM_FORM_USER_PREFIX}{user.id}"
+            current_number = Customization.objects.filter(name=current_number_customization).first()
+            current_number_value = quiet_int(current_number.value, 0) if current_number else 0
+            current_number_value += 1
+            context = {
+                "custom_form_template": self.template,
+                "user": user,
+                "numbering_group": automatic_numbering.numbering_group or "",
+                "current_number": current_number_value,
+            }
+            if save:
+                Customization(name=current_number_customization, value=current_number_value).save()
+            form_number = Template(automatic_numbering.numbering_template).render(Context(context))
+            return form_number
+
     def clean(self):
         try:
             fake_user = User(first_name="Testy", last_name="McTester", email="testy_mctester@gmail.com", id=1)
-            fake_template = CustomFormPDFTemplate(name="Test", id=1, customformautomaticnumbering=self)
-            fake_form = CustomForm(template=fake_template, id=1)
-            fake_form.next_custom_form_number(fake_user, save=False)
+            self.next_custom_form_number(fake_user, save=False)
         except Exception as e:
             raise ValidationError(str(e))
 
@@ -415,31 +442,6 @@ class CustomForm(BaseModel):
         self.cancellation_time = timezone.now()
         self.cancellation_reason = reason
         self.save()
-
-    def next_custom_form_number(self, user: User, save=False) -> str:
-        automatic_numbering: CustomFormAutomaticNumbering = getattr(self.template, "customformautomaticnumbering", None)
-        if automatic_numbering and automatic_numbering.enabled:
-            current_number_customization = (
-                f"{CUSTOM_FORM_CURRENT_NUMBER_PREFIX}_{CUSTOM_FORM_TEMPLATE_PREFIX}{self.template.id}"
-            )
-            if automatic_numbering.numbering_group:
-                current_number_customization += f"_{CUSTOM_FORM_GROUP_PREFIX}{automatic_numbering.numbering_group}"
-            if automatic_numbering.numbering_per_user:
-                current_number_customization += f"_{CUSTOM_FORM_USER_PREFIX}{user.id}"
-            current_number = Customization.objects.filter(name=current_number_customization).first()
-            current_number_value = quiet_int(current_number.value, 0) if current_number else 0
-            current_number_value += 1
-            context = {
-                "custom_form_template": self.template,
-                "custom_form": self,
-                "user": user,
-                "numbering_group": automatic_numbering.numbering_group or "",
-                "current_number": current_number_value,
-            }
-            if save:
-                Customization(name=current_number_customization, value=current_number_value).save()
-            form_number = Template(automatic_numbering.numbering_template).render(Context(context))
-            return form_number
 
     def __str__(self):
         return f"{self.name} by {self.creator}"

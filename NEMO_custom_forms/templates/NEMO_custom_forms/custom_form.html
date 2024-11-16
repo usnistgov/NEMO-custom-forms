@@ -21,13 +21,47 @@
     </h1>
     <form id="custom_form_form"
           class="well"
-          action="{% if form.instance.id %}{% url 'edit_custom_form' form.instance.id %}{% else %}{% url 'create_custom_form_with_template' selected_template_id %}{% endif %}"
+          action="{% if form.instance.id %}{% url 'edit_custom_form' form.instance.id %}{% else %}{% url 'create_custom_form_with_template' selected_template.id %}{% endif %}"
           enctype="multipart/form-data"
           method="post">
         {% csrf_token %}
         {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
-        <div class="form-group"></div>
         {% if form.template_data.errors %}<div class="alert alert-danger">{{ form.template_data.errors }}</div>{% endif %}
+        <div class="row">
+            <div class="col-md-4">
+                {% if selected_template.customformautomaticnumbering %}
+                    <div class="form-group">
+                        <div style="margin-bottom: 5px; display: flex; align-items: baseline; justify-content: space-between">
+                            <label for="form_number">Form number</label>
+                            {% if not form.instance.form_number %}
+                                <input type="hidden" id="auto_generate" name="auto_generate" value="false" />
+                                <button type="button"
+                                        style="margin-left: 15px"
+                                        class="btn btn-sm btn-success"
+                                        onclick="generate_form_number()">Generate form number</button>
+                            {% endif %}
+                        </div>
+                        <input type="text"
+                               class="form-control"
+                               name="form_number"
+                               id="form_number"
+                               value="{% if form.instance.form_number %}{{ form.instance.form_number }}{% else %}{{ form.form_number.value|default_if_none:"" }}{% endif %}"
+                               disabled />
+                    </div>
+                {% else %}
+                    <div class="form-group">
+                        <label for="form_number" class="control-label">Form number</label>
+                        <input type="text"
+                               class="form-control"
+                               name="form_number"
+                               id="form_number"
+                               maxlength="{{ form.fields.form_number.max_length }}"
+                               value="{% if form.instance.form_number %}{{ form.instance.form_number }}{% else %}{{ form.form_number.value|default_if_none:"" }}{% endif %}"
+                               {% if form.instance.form_number %}disabled{% endif %} />
+                    </div>
+                {% endif %}
+            </div>
+        </div>
         {{ dynamic_form_fields }}
         <div class="form-group">
             <label for="notes" class="control-label">Notes</label>
@@ -41,19 +75,21 @@
         </div>
         <div class="form-group">
             <span class="control-label">Documents</span>
-            <div class="">
-                {% for d in form.instance.customformdocuments_set.all %}
-                    <div id="document_{{ d.id }}">
-                        {% if not readonly %}
-                            <a href="javascript:mark_document_for_removal('{{ d.id }}')"
-                               class="grey hover-black"
-                               title="Remove {{ d.filename }}"><span class="glyphicon glyphicon-remove-circle"></span></a>
-                        {% endif %}
-                        <a href="{{ d.document.url }}" target="_blank" style="margin-right: 5px">{{ d.filename }}</a>
-                    </div>
-                {% empty %}
-                    <div class="form-control-static">This form doesn't have any documents.</div>
-                {% endfor %}
+            <div>
+                {% if form.instance.id %}
+                    {% for d in form.instance.customformdocuments_set.all %}
+                        <div id="document_{{ d.id }}">
+                            {% if not readonly %}
+                                <a href="javascript:mark_document_for_removal('{{ d.id }}')"
+                                   class="grey hover-black"
+                                   title="Remove {{ d.filename }}"><span class="glyphicon glyphicon-remove-circle"></span></a>
+                            {% endif %}
+                            <a href="{{ d.document.url }}" target="_blank" style="margin-right: 5px">{{ d.filename }}</a>
+                        </div>
+                    {% empty %}
+                        <div class="form-control-static">This form doesn't have any documents.</div>
+                    {% endfor %}
+                {% endif %}
                 <div style="padding-top: 10px">
                     <input aria-label="File upload" id="fileupload" type="file" name="form_documents" multiple>
                 </div>
@@ -101,6 +137,17 @@
             {
                 submit_and_disable(review_button)
             }
+        }
+
+        function set_auto_generated_form_number(response)
+        {
+            $("#form_number").val(response["form_number"]);
+            $("#auto_generate").val("true");
+        }
+
+        function generate_form_number()
+        {
+            ajax_get("{% url "generate_template_custom_form_number" selected_template.id %}", undefined, set_auto_generated_form_number, ajax_failure_callback("Error auto-generating form number", "The form number could not be generate for the following reason: "))
         }
     </script>
 {% endblock %}

@@ -36,6 +36,11 @@ urlpatterns = [
                 ),
                 path("templates/", custom_forms.custom_form_templates, name="custom_form_templates"),
                 path(
+                    "templates/<int:custom_form_template_id>/generate_custom_form_number/",
+                    custom_forms.generate_custom_form_number,
+                    name="generate_template_custom_form_number",
+                ),
+                path(
                     "form_fields/<int:form_id>/<str:group_name>/",
                     custom_forms.form_fields_group,
                     name="custom_form_fields_group",

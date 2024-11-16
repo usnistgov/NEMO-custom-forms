@@ -23,21 +23,20 @@ class CustomFormsTest(TestCase):
 
     def test_next_custom_form_number(self):
         custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 1", id=1)
-        custom_form = CustomForm.objects.create(creator=self.user, template=custom_form_template)
         # Test easy cases, if auto numbering doesn't exist or is not enabled, shouldn't return anything
-        self.assertFalse(custom_form.next_custom_form_number(self.user))
+        self.assertFalse(custom_form_template.next_custom_form_number(self.user))
         automatic_numbering: CustomFormAutomaticNumbering = CustomFormAutomaticNumbering.objects.create(
             template=custom_form_template, enabled=False
         )
-        self.assertFalse(custom_form.next_custom_form_number(self.user))
+        self.assertFalse(custom_form_template.next_custom_form_number(self.user))
         # Enabled and simple template with current number
         automatic_numbering.enabled = True
         automatic_numbering.numbering_template = "{{ current_number }}"
         automatic_numbering.save()
         current_number = 1
-        self.assertEqual(custom_form.next_custom_form_number(self.user, save=True), f"{current_number}")
+        self.assertEqual(custom_form_template.next_custom_form_number(self.user, save=True), f"{current_number}")
         current_number += 1
-        self.assertEqual(custom_form.next_custom_form_number(self.user), f"{current_number}")
+        self.assertEqual(custom_form_template.next_custom_form_number(self.user), f"{current_number}")
         # Enabled and using group
         automatic_numbering.enabled = True
         automatic_numbering.numbering_group = 2024
@@ -47,12 +46,14 @@ class CustomFormsTest(TestCase):
         # Group but no user
         # We are using the group, so it's a different count
         current_number_group = 1
-        self.assertEqual(custom_form.next_custom_form_number(self.user), f"{current_number_group}")
+        self.assertEqual(custom_form_template.next_custom_form_number(self.user), f"{current_number_group}")
         automatic_numbering.numbering_template = "{{ numbering_group }}-{{ current_number }}"
         automatic_numbering.save()
-        self.assertEqual(custom_form.next_custom_form_number(self.user, save=True), f"2024-{current_number_group}")
+        self.assertEqual(
+            custom_form_template.next_custom_form_number(self.user, save=True), f"2024-{current_number_group}"
+        )
         current_number_group += 1
-        self.assertEqual(custom_form.next_custom_form_number(self.user), f"2024-{current_number_group}")
+        self.assertEqual(custom_form_template.next_custom_form_number(self.user), f"2024-{current_number_group}")
         # User but no group
         # Let's now use the user, so it's a different count
         current_number_user = 1
@@ -61,12 +62,13 @@ class CustomFormsTest(TestCase):
         automatic_numbering.numbering_group = None
         automatic_numbering.numbering_template = "{{ current_number }}"
         automatic_numbering.save()
-        self.assertEqual(custom_form.next_custom_form_number(self.user, save=True), f"{current_number_user}")
+        self.assertEqual(custom_form_template.next_custom_form_number(self.user, save=True), f"{current_number_user}")
         current_number_user += 1
         automatic_numbering.numbering_template = "{{ numbering_group }}-{{ user.username }}-{{ current_number }}"
         automatic_numbering.save()
         self.assertEqual(
-            custom_form.next_custom_form_number(self.user, save=True), f"-{self.user.username}-{current_number_user}"
+            custom_form_template.next_custom_form_number(self.user, save=True),
+            f"-{self.user.username}-{current_number_user}",
         )
         # User and group
         # Let's now use both, so it's a different count again
@@ -76,23 +78,24 @@ class CustomFormsTest(TestCase):
         automatic_numbering.numbering_group = 24
         automatic_numbering.numbering_template = "{{ current_number }}"
         automatic_numbering.save()
-        self.assertEqual(custom_form.next_custom_form_number(self.user, save=True), f"{current_number_user_group}")
+        self.assertEqual(
+            custom_form_template.next_custom_form_number(self.user, save=True), f"{current_number_user_group}"
+        )
         current_number_user_group += 1
         automatic_numbering.numbering_template = "{{ numbering_group }}-{{ user.username }}-{{ current_number }}"
         automatic_numbering.save()
         self.assertEqual(
-            custom_form.next_custom_form_number(self.user, save=True),
+            custom_form_template.next_custom_form_number(self.user, save=True),
             f"24-{self.user.username}-{current_number_user_group}",
         )
         current_number_user_group += 1
         # Test with full numbering template: {numbering_group}-680-{FirstNameFirstLetter}{LastNameFirstLetter}{number with leading zeros}
         automatic_numbering.numbering_template = "{{ numbering_group }}-680-{{ user.first_name.0|capfirst }}{{ user.last_name.0|capfirst }}{{ current_number|stringformat:'03d' }}"
         automatic_numbering.save()
-        self.assertEqual(custom_form.next_custom_form_number(self.user), f"24-680-TM003")
+        self.assertEqual(custom_form_template.next_custom_form_number(self.user), f"24-680-TM003")
         # Change template and check number. it should have reset
         custom_form_template_2 = CustomFormPDFTemplate.objects.create(name="Form 2")
-        custom_form_2 = CustomForm.objects.create(creator=self.user, template=custom_form_template_2)
-        self.assertFalse(custom_form_2.next_custom_form_number(self.user))
+        self.assertFalse(custom_form_template_2.next_custom_form_number(self.user))
 
     def test_current_custom_form_order_numbers(self):
         # reset all custom form settings
@@ -105,15 +108,13 @@ class CustomFormsTest(TestCase):
         automatic_numbering_2: CustomFormAutomaticNumbering = CustomFormAutomaticNumbering.objects.create(
             template=custom_form_template_2, enabled=False
         )
-        custom_form = CustomForm.objects.create(creator=self.user, template=custom_form_template)
-        custom_form_2 = CustomForm.objects.create(creator=self.user, template=custom_form_template_2)
         # Case 1: automatic numbering enabled
         automatic_numbering.enabled = True
         automatic_numbering.numbering_per_user = False
         automatic_numbering.numbering_group = None
         automatic_numbering.numbering_template = "{{ current_number }}"
         automatic_numbering.save()
-        custom_form.next_custom_form_number(self.user, save=True)
+        automatic_numbering.next_custom_form_number(self.user, save=True)
         self.assertEqual({None: "1"}, custom_forms_current_numbers(custom_form_template))
         # reset all custom form settings
         Customization.objects.filter(name__startswith=CUSTOM_FORM_CURRENT_NUMBER_PREFIX).delete()
@@ -123,7 +124,7 @@ class CustomFormsTest(TestCase):
         automatic_numbering.numbering_group = None
         automatic_numbering.numbering_template = "{{ current_number }}"
         automatic_numbering.save()
-        custom_form.next_custom_form_number(self.user, save=True)
+        automatic_numbering.next_custom_form_number(self.user, save=True)
         self.assertEqual({str(self.user.id): "1"}, custom_forms_current_numbers(custom_form_template))
         # reset all custom form settings
         Customization.objects.filter(name__startswith=CUSTOM_FORM_CURRENT_NUMBER_PREFIX).delete()
@@ -133,7 +134,7 @@ class CustomFormsTest(TestCase):
         automatic_numbering.numbering_group = 24
         automatic_numbering.numbering_template = "{{ current_number }}"
         automatic_numbering.save()
-        custom_form.next_custom_form_number(self.user, save=True)
+        automatic_numbering.next_custom_form_number(self.user, save=True)
         self.assertEqual({"24": "1"}, custom_forms_current_numbers(custom_form_template))
         # reset all custom form settings
         Customization.objects.filter(name__startswith=CUSTOM_FORM_CURRENT_NUMBER_PREFIX).delete()
@@ -143,7 +144,7 @@ class CustomFormsTest(TestCase):
         automatic_numbering.numbering_group = 24
         automatic_numbering.numbering_template = "{{ current_number }}"
         automatic_numbering.save()
-        custom_form.next_custom_form_number(self.user, save=True)
+        automatic_numbering.next_custom_form_number(self.user, save=True)
         self.assertEqual({"24": {str(self.user.id): "1"}}, custom_forms_current_numbers(custom_form_template))
         # reset all custom form settings
         Customization.objects.filter(name__startswith=CUSTOM_FORM_CURRENT_NUMBER_PREFIX).delete()
@@ -158,8 +159,8 @@ class CustomFormsTest(TestCase):
         automatic_numbering_2.numbering_group = 24
         automatic_numbering_2.numbering_template = "{{ current_number }}"
         automatic_numbering_2.save()
-        custom_form.next_custom_form_number(self.user, save=True)
-        custom_form_2.next_custom_form_number(self.user, save=True)
+        automatic_numbering.next_custom_form_number(self.user, save=True)
+        automatic_numbering_2.next_custom_form_number(self.user, save=True)
         self.assertEqual({"24": {str(self.user.id): "1"}}, custom_forms_current_numbers(custom_form_template))
         self.assertEqual({"24": {str(self.user.id): "1"}}, custom_forms_current_numbers(custom_form_template_2))
         # reset all custom form settings
@@ -175,8 +176,8 @@ class CustomFormsTest(TestCase):
         automatic_numbering_2.numbering_group = 24
         automatic_numbering_2.numbering_template = "{{ current_number }}"
         automatic_numbering_2.save()
-        custom_form.next_custom_form_number(self.user, save=True),
-        custom_form_2.next_custom_form_number(self.user, save=True),
+        automatic_numbering.next_custom_form_number(self.user, save=True),
+        automatic_numbering_2.next_custom_form_number(self.user, save=True),
         self.assertEqual({"23": {str(self.user.id): "1"}}, custom_forms_current_numbers(custom_form_template))
         self.assertEqual({"24": {str(self.user.id): "1"}}, custom_forms_current_numbers(custom_form_template_2))
         # reset all custom form settings
