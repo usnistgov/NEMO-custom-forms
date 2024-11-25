@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import KeysView, List, Optional, Set
+from typing import KeysView, List, Optional, Tuple
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
 from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
 from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
 from NEMO.widgets.dynamic_form import get_submitted_user_inputs, validate_dynamic_form_model
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.template import Context, Template
@@ -19,8 +19,6 @@ from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
-from NEMO_custom_forms.customization import CustomFormCustomization
-from NEMO_custom_forms.fields import RoleGroupPermissionChoiceField
 from NEMO_custom_forms.pdf_utils import (
     copy_and_fill_pdf_form,
     pdf_form_field_names,
@@ -35,6 +33,59 @@ from NEMO_custom_forms.utilities import (
 )
 
 re_ends_with_number = r"\d+$"
+
+
+# CharField implementation with roles, groups, permissions choices
+class RoleGroupPermissionChoiceField(models.CharField):
+    def __init__(self, *args, roles=True, groups=False, permissions=False, **kwargs):
+        self.roles = roles
+        self.groups = groups
+        self.permissions = permissions
+        super().__init__(*args, **kwargs)
+
+    def role_choices(self) -> List[Tuple[str, str]]:
+        role_choice_list = [("", "---------")]
+        if self.roles:
+            role_choice_list.extend(
+                [
+                    ("is_staff", "Role: Staff"),
+                    ("is_user_office", "Role: User Office"),
+                    ("is_accounting_officer", "Role: Accounting officers"),
+                    ("is_facility_manager", "Role: Facility managers"),
+                    ("is_superuser", "Role: Administrators"),
+                ]
+            )
+        if self.groups:
+            role_choice_list.extend([(str(group.id), f"Group: {group.name}") for group in Group.objects.all()])
+        if self.permissions:
+            role_choice_list.extend(
+                [(p["codename"], f'Permission: {p["name"]}') for p in Permission.objects.values("codename", "name")]
+            )
+        return role_choice_list
+
+    def has_user_role(self, role: str, user: User) -> bool:
+        if not user.is_active:
+            return False
+        if self.roles:
+            if hasattr(user, role):
+                return getattr(user, role, False)
+        if self.groups:
+            # check that it's a number
+            if quiet_int(role, None):
+                group = Group.objects.filter(id=role).exists()
+                if group:
+                    return user.groups.filter(id=role).exists()
+        if self.permissions:
+            permission = Permission.objects.filter(codename__iexact=role).exists()
+            if permission:
+                return user.has_perm(permission)
+        return False
+
+    def role_display(self, role: str) -> str:
+        for key, value in self.role_choices():
+            if key == role:
+                return value
+        return ""
 
 
 class CustomFormPDFTemplate(SerializationByNameModel):
@@ -135,21 +186,36 @@ class CustomFormAutomaticNumbering(BaseModel):
         default="{{ current_number|stringformat:'04d' }}",
         help_text=_(
             mark_safe(
-                '<div style="margin-top: 10px">The numbering template. Provided variables include: <ul style="margin-left: 20px"><li style="list-style: inherit"><b>custom_form_template</b>: the custom form template instance</li><li style="list-style: inherit"><li style="list-style: inherit"><b>user</b>: the user triggering the sequence</li><li style="list-style: inherit"><b>numbering_group</b>: the numbering group for this sequence</li><li style="list-style: inherit"><b>current_number</b>: the current number for this sequence</li></ul></div>'
+                '<div style="margin-top: 10px">The numbering template. Provided variables include: <ul style="margin-left: 20px"><li style="list-style: inherit"><b>custom_form_template</b>: the custom form template instance</li><li style="list-style: inherit"><b>user</b>: the user triggering the sequence</li><li style="list-style: inherit"><b>numbering_group</b>: the numbering group for this sequence</li><li style="list-style: inherit"><b>current_number</b>: the current number for this sequence</li></ul></div>'
             )
         ),
     )
+    role = RoleGroupPermissionChoiceField(
+        roles=True,
+        groups=True,
+        verbose_name="Role/Group",
+        max_length=CHAR_FIELD_MEDIUM_LENGTH,
+        help_text=_("The role/group required for users to automatically generate the form number"),
+    )
+
+    @classmethod
+    def get_role_field(cls) -> RoleGroupPermissionChoiceField:
+        return cls._meta.get_field("role")
+
+    def get_role_display(self):
+        return self.get_role_field().role_display(self.role)
+
+    def can_generate_custom_form_number(self, user):
+        return self.get_role_field().has_user_role(self.role, user)
 
     def next_custom_form_number(self, user: User, save=False) -> str:
-        automatic_numbering: CustomFormAutomaticNumbering = getattr(self.template, "customformautomaticnumbering", None)
-        can_generate_form_number = True  # TODO: Add this
-        if automatic_numbering and automatic_numbering.enabled and can_generate_form_number:
+        if self.enabled and self.can_generate_custom_form_number(user):
             current_number_customization = (
                 f"{CUSTOM_FORM_CURRENT_NUMBER_PREFIX}_{CUSTOM_FORM_TEMPLATE_PREFIX}{self.template_id}"
             )
-            if automatic_numbering.numbering_group:
-                current_number_customization += f"_{CUSTOM_FORM_GROUP_PREFIX}{automatic_numbering.numbering_group}"
-            if automatic_numbering.numbering_per_user:
+            if self.numbering_group:
+                current_number_customization += f"_{CUSTOM_FORM_GROUP_PREFIX}{self.numbering_group}"
+            if self.numbering_per_user:
                 current_number_customization += f"_{CUSTOM_FORM_USER_PREFIX}{user.id}"
             current_number = Customization.objects.filter(name=current_number_customization).first()
             current_number_value = quiet_int(current_number.value, 0) if current_number else 0
@@ -157,12 +223,12 @@ class CustomFormAutomaticNumbering(BaseModel):
             context = {
                 "custom_form_template": self.template,
                 "user": user,
-                "numbering_group": automatic_numbering.numbering_group or "",
+                "numbering_group": self.numbering_group or "",
                 "current_number": current_number_value,
             }
             if save:
                 Customization(name=current_number_customization, value=current_number_value).save()
-            form_number = Template(automatic_numbering.numbering_template).render(Context(context))
+            form_number = Template(self.numbering_template).render(Context(context))
             return form_number
 
     def clean(self):
@@ -184,10 +250,16 @@ class CustomFormApprovalLevel(BaseModel):
     level = models.PositiveIntegerField(
         help_text=_("The approval level number. Approval will be asked in ascending order")
     )
-    role = models.CharField(
+    role = RoleGroupPermissionChoiceField(
+        roles=True,
+        groups=True,
         verbose_name="Role/Group",
         max_length=CHAR_FIELD_MEDIUM_LENGTH,
         help_text=_("The role/group required for users to approve"),
+    )
+    self_approval_allowed = models.BooleanField(
+        default=False,
+        help_text=_("Check this box to allow the user who generates the form to approve it."),
     )
     can_edit_form = models.BooleanField(
         default=True, help_text=_("Check this box if the reviewer can make changes to the form")
@@ -197,25 +269,12 @@ class CustomFormApprovalLevel(BaseModel):
         ordering = ["template", "level"]
         unique_together = ["template", "level"]
 
-    def reviewers(self) -> Set[User]:
-        if self.role:
-            active_users = User.objects.filter(is_active=True)
-            if self.role == "is_staff":
-                return set(active_users.filter(is_staff=True))
-            elif self.role == "is_user_office":
-                return set(active_users.filter(is_user_office=True))
-            elif self.role == "is_accounting_officer":
-                return set(active_users.filter(is_accounting_officer=True))
-            elif self.role == "is_facility_manager":
-                return set(active_users.filter(is_facility_manager=True))
-            elif self.role == "is_administrator":
-                return set(active_users.filter(is_administrator=True))
-            else:
-                return set(active_users.filter(groups__name=self.role))
-        return set()
-
     def get_role_display(self):
-        return RoleGroupPermissionChoiceField.role_display(self.role, roles=True, groups=True)
+        return self.get_role_field().role_display(self.role)
+
+    @classmethod
+    def get_role_field(cls) -> RoleGroupPermissionChoiceField:
+        return cls._meta.get_field("role")
 
     def __str__(self):
         return f"{self.template.name} level {self.level} approval: {self.get_role_display()}"
@@ -262,7 +321,7 @@ class CustomFormSpecialMapping(BaseModel):
 
     class Meta:
         ordering = ["field_name"]
-        unique_together = ("template", "field_name")
+        unique_together = ["template", "field_name"]
 
     def clean(self):
         if self.field_value in self.FieldValue.ApprovalValues and not self.field_value_approval_id:
@@ -386,16 +445,6 @@ class CustomForm(BaseModel):
             if not CustomFormApproval.objects.filter(approval_level=approval_level, custom_form=self).exists():
                 return approval_level
 
-    def next_approval_candidates(self) -> Set[User]:
-        users = set()
-        # cannot approve form unless it's in pending state
-        if self.status == self.FormStatus.PENDING:
-            # get first approval level that hasn't been completed
-            level = self.next_approval_level()
-            if level:
-                users.update(level.reviewers())
-        return users
-
     def get_approval_for_level(self, approval_level: int) -> CustomFormApproval:
         return self.customformapproval_set.filter(approval_level__level=approval_level).first()
 
@@ -442,6 +491,32 @@ class CustomForm(BaseModel):
         self.cancellation_time = timezone.now()
         self.cancellation_reason = reason
         self.save()
+
+    def can_approve(self, user: User) -> bool:
+        if not self.pk:
+            return False
+        if self.status != CustomForm.FormStatus.PENDING:
+            return False
+        level = self.next_approval_level()
+        if not level:
+            return False
+        if user == self.creator and not level.self_approval_allowed:
+            return False
+        return level.get_role_field().has_user_role(level.role, user)
+
+    def can_approve_edit(self, user: User) -> bool:
+        level = self.next_approval_level()
+        if not level:
+            return False
+        return self.can_approve(user) and level.can_edit_form
+
+    def can_edit(self, user: User) -> bool:
+        if self.cancelled or self.status in [
+            CustomForm.FormStatus.DENIED,
+            CustomForm.FormStatus.FULFILLED,
+        ]:
+            return False
+        return self.status == self.FormStatus.PENDING and self.creator == user or self.can_approve_edit(user)
 
     def __str__(self):
         return f"{self.name} by {self.creator}"
@@ -496,8 +571,7 @@ class CustomFormApproval(BaseModel):
                 if self.custom_form.next_approval_level() != self.approval_level:
                     raise ValidationError({"approval_level": _("This form has already been approved at this level")})
             if self.approved_by_id:
-                self_approval_allowed = CustomFormCustomization.get_bool("custom_forms_self_approval_allowed")
-                if not self_approval_allowed and self.approved_by == self.custom_form.creator:
+                if not self.approval_level.self_approval_allowed and self.approved_by == self.custom_form.creator:
                     raise ValidationError({"approved_by": _("The creator is not allowed to approve its own form")})
-                if self.approved_by not in self.custom_form.next_approval_candidates():
+                if not self.custom_form.can_approve(self.approved_by):
                     raise ValidationError({"approved_by": _("This person is not allowed to approve this form")})

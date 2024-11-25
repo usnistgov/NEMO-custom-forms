@@ -1,5 +1,6 @@
 {% extends 'NEMO_custom_forms/custom_forms_base.html' %}
 {% load custom_tags_and_filters %}
+{% load custom_form_tags %}
 {% block add_button %}
     {% if pdf_templates and user_can_add %}
         {% url 'create_custom_form' as create_custom_form_url %}
@@ -22,7 +23,7 @@
             {% for custom_form in page %}
                 <tr class="{% if custom_form.status == "DENIED" %}danger{% elif custom_form.status == "FULFILLED" %}success{% else %}default{% endif %}">
                     <td>{{ custom_form.form_number|default_if_none:"" }}</td>
-                    <td>{{ custom_form.creation_time|date:"SHORT_DATE_FORMAT" }}</td>
+                    <td>{{ custom_form.creation_time|date:"SHORT_DATETIME_FORMAT" }}</td>
                     <td>{{ custom_form.creator }}</td>
                     <td>{{ custom_form.get_status_display }}</td>
                     <td class="text-right text-nowrap">
@@ -43,13 +44,15 @@
                                 {% button icon="glyphicon-list-alt" size="small" type="export" value="Docs" onclick="document_view(this.form);" %}
                             </form>
                         {% endif %}
-                        {% if user_can_add or user in custom_form.next_approval_candidates %}
-                            {% url "edit_custom_form" custom_form.id as edit_custom_form_url %}
+                        {% url "edit_custom_form" custom_form.id as edit_custom_form_url %}
+                        {% if custom_form|can_edit_custom_form:user and not custom_form|can_approve_custom_form:user %}
                             {% button size="small" type="edit" value="Edit" url=edit_custom_form_url %}
+                        {% elif user_can_add %}
+                            {% button size="small" type="view" value="View" url=edit_custom_form_url %}
                         {% endif %}
                         {% if custom_form.next_approval_level %}
-                            {% if user in custom_form.next_approval_candidates %}
-                                {% if self_approval_allowed or user != custom_form.creator %}
+                            {% if custom_form|can_approve_custom_form:user %}
+                                {% if custom_form.next_approval_level.self_approval_allowed or user != custom_form.creator %}
                                     {% url 'approval_custom_form' custom_form.id as approval_custom_form_url %}
                                     {% button size="small" type="info" value="Approve" url=approval_custom_form_url %}
                                 {% endif %}

@@ -99,20 +99,6 @@
                 </div>
             </div>
         </div>
-        <div class="form-group">
-            <label class="control-label col-xs-4 col-md-3">Self approval</label>
-            <div class="col-xs-8 col-md-9">
-                <div class="checkbox">
-                    <label>
-                        <input type="checkbox"
-                               name="custom_forms_self_approval_allowed"
-                               {% if custom_forms_self_approval_allowed %}checked{% endif %}
-                               value="enabled">
-                        Allow the same person to create and approve a custom form
-                    </label>
-                </div>
-            </div>
-        </div>
         <div class="customization-separation" style="margin-bottom: 15px"></div>
         <div class="text-center">{% button type="save" value="Save settings" %}</div>
     </form>

@@ -19,7 +19,7 @@ class CustomFormsTest(TestCase):
         assert apps.is_installed("NEMO_custom_forms")
 
     def setUp(self):
-        self.user, self.project = create_user_and_project()
+        self.user, self.project = create_user_and_project(is_staff=True)
 
     def test_next_custom_form_number(self):
         custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 1", id=1)
@@ -32,6 +32,7 @@ class CustomFormsTest(TestCase):
         # Enabled and simple template with current number
         automatic_numbering.enabled = True
         automatic_numbering.numbering_template = "{{ current_number }}"
+        automatic_numbering.role = "is_staff"
         automatic_numbering.save()
         current_number = 1
         self.assertEqual(custom_form_template.next_custom_form_number(self.user, save=True), f"{current_number}")
@@ -113,6 +114,8 @@ class CustomFormsTest(TestCase):
         automatic_numbering.numbering_per_user = False
         automatic_numbering.numbering_group = None
         automatic_numbering.numbering_template = "{{ current_number }}"
+        automatic_numbering.role = "is_staff"
+        automatic_numbering.full_clean()
         automatic_numbering.save()
         automatic_numbering.next_custom_form_number(self.user, save=True)
         self.assertEqual({None: "1"}, custom_forms_current_numbers(custom_form_template))
@@ -158,6 +161,7 @@ class CustomFormsTest(TestCase):
         automatic_numbering_2.numbering_per_user = True
         automatic_numbering_2.numbering_group = 24
         automatic_numbering_2.numbering_template = "{{ current_number }}"
+        automatic_numbering_2.role = "is_staff"
         automatic_numbering_2.save()
         automatic_numbering.next_custom_form_number(self.user, save=True)
         automatic_numbering_2.next_custom_form_number(self.user, save=True)
@@ -186,17 +190,39 @@ class CustomFormsTest(TestCase):
     def test_approval_role(self):
         custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 11", id=11)
         approval_level: CustomFormApprovalLevel = CustomFormApprovalLevel.objects.create(
-            template=custom_form_template, level=1
+            template=custom_form_template, level=1, self_approval_allowed=True
         )
         approval_level.role = "is_staff"
         approval_level.save()
-        self.assertNotIn(self.user, approval_level.reviewers())
+        custom_form: CustomForm = CustomForm.objects.create(template=custom_form_template, creator=self.user)
+        self.user.is_staff = False
+        self.user.save()
+        self.assertFalse(custom_form.can_approve(self.user))
         self.staff_user, self.staff_project = create_user_and_project(is_staff=True)
-        self.assertIn(self.staff_user, approval_level.reviewers())
+        self.assertTrue(custom_form.can_approve(self.staff_user))
         new_group = Group.objects.create(name="New Group")
-        approval_level.role = new_group.name
+        approval_level.role = new_group.id
         approval_level.save()
-        self.assertNotIn(self.staff_user, approval_level.reviewers())
+        self.assertFalse(custom_form.can_approve(self.staff_user))
         self.user.groups.add(new_group)
-        self.assertNotIn(self.staff_user, approval_level.reviewers())
-        self.assertIn(self.user, approval_level.reviewers())
+        self.assertFalse(custom_form.can_approve(self.staff_user))
+        self.assertTrue(custom_form.can_approve(self.user))
+        approval_level.self_approval_allowed = False
+        approval_level.save()
+        self.assertFalse(custom_form.can_approve(self.user))
+
+    def test_next_custom_form_numbering_role(self):
+        custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 12", id=12)
+        automatic_numbering = CustomFormAutomaticNumbering(template=custom_form_template)
+        automatic_numbering.enabled = True
+        automatic_numbering.numbering_per_user = False
+        automatic_numbering.numbering_group = None
+        automatic_numbering.numbering_template = "{{ current_number }}"
+        automatic_numbering.role = "is_superuser"
+        automatic_numbering.full_clean()
+        automatic_numbering.save()
+        self.assertFalse(automatic_numbering.next_custom_form_number(self.user))
+        automatic_numbering.role = "is_staff"
+        automatic_numbering.full_clean()
+        automatic_numbering.save()
+        self.assertTrue(automatic_numbering.next_custom_form_number(self.user))

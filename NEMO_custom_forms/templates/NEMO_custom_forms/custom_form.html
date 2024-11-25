@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load custom_tags_and_filters %}
+{% load custom_form_tags %}
 {% block title %}
     {% if form.instance.id %}
         Modify custom form
@@ -9,31 +10,36 @@
 {% endblock %}
 {% block content %}
     <h1 class="form-group">
-        {% if form.instance.id %}
+        {% if readonly %}
+            {{ selected_template.name }} form
+        {% elif form.instance.id %}
             {% if approval_level %}
-                Custom form approval
+                {{ selected_template.name }} form approval
             {% else %}
-                Modify custom form
+                Modify {{ selected_template.name }} form
             {% endif %}
         {% else %}
-            New custom form
+            New {{ selected_template.name }} form
         {% endif %}
     </h1>
     <form id="custom_form_form"
           class="well"
           action="{% if form.instance.id %}{% url 'edit_custom_form' form.instance.id %}{% else %}{% url 'create_custom_form_with_template' selected_template.id %}{% endif %}"
           enctype="multipart/form-data"
+          {% if readonly %}readonly{% endif %}
           method="post">
         {% csrf_token %}
-        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
-        {% if form.template_data.errors %}<div class="alert alert-danger">{{ form.template_data.errors }}</div>{% endif %}
+        {% if not readonly %}
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            {% if form.template_data.errors %}<div class="alert alert-danger">{{ form.template_data.errors }}</div>{% endif %}
+        {% endif %}
         <div class="row">
             <div class="col-md-4">
                 {% if selected_template.customformautomaticnumbering %}
                     <div class="form-group">
                         <div style="margin-bottom: 5px; display: flex; align-items: baseline; justify-content: space-between">
                             <label for="form_number">Form number</label>
-                            {% if not form.instance.form_number %}
+                            {% if not form.instance.form_number and selected_template|can_generate_custom_form_number:user %}
                                 <input type="hidden" id="auto_generate" name="auto_generate" value="false" />
                                 <button type="button"
                                         style="margin-left: 15px"
@@ -98,18 +104,18 @@
         {% if form.instance.get_status_display != "Fulfilled" %}
             <div class="form-group row">
                 <div class="col-xs-6 text-left">
-                    {% if form.instance.id %}
+                    {% if form.instance.id and not readonly %}
                         {% url 'cancel_custom_form' form.instance.id as cancel_custom_form_url %}
                         {% button type="delete" submit=False title="Cancel form" icon="glyphicon-ban-circle" value="Cancel form" onclick="if (confirm('Are you sure you want to cancel this form?')) {window.location.href='"|concat:cancel_custom_form_url|concat:"' }" %}
                     {% endif %}
                 </div>
                 <div class="col-xs-6 text-right">
-                    {% if user in form.instance.next_approval_candidates %}
-                        {% if self_approval_allowed or user != form.instance.creator %}
+                    {% if form.instance|can_approve_custom_form:user %}
+                        {% if approval_level.self_approval_allowed or user != form.instance.creator %}
                             {% button type="save" submit=False name="approve_form" title="Approve form" icon="glyphicon-ok-circle" value="Approve form" onclick="confirm_review_dialog(this);" %}
                             {% button type="delete" submit=False name="deny_form" title="Deny form" icon="glyphicon-ban-circle" value="Deny form" onclick="confirm_review_dialog(this);" %}
                         {% endif %}
-                    {% else %}
+                    {% elif not readonly %}
                         {% button type="save" value=form.instance.id|yesno:"Save changes,Create form" %}
                     {% endif %}
                 </div>
@@ -117,15 +123,17 @@
         {% endif %}
     </form>
     <script>
+        custom_form_jq = $("#custom_form_form");
+
         window.addEventListener("load", function ()
         {
             auto_size_textarea($("#notes")[0], 5);
         });
-        
+
         function mark_document_for_removal(document_id)
         {
             $("#document_"+document_id).remove();
-            $("#custom_form_form").append('<input type="hidden" name="remove_documents" value="'+document_id+'" />');
+            custom_form_jq.append('<input type="hidden" name="remove_documents" value="'+document_id+'" />');
 		}
 
         function confirm_review_dialog(review_button, decision_text)
@@ -148,6 +156,13 @@
         function generate_form_number()
         {
             ajax_get("{% url "generate_template_custom_form_number" selected_template.id %}", undefined, set_auto_generated_form_number, ajax_failure_callback("Error auto-generating form number", "The form number could not be generate for the following reason: "))
+        }
+
+        // Disable all form fields if form is readonly
+        if (custom_form_jq.is("[readonly]"))
+        {
+            custom_form_jq.find("input, textarea, select").attr("disabled", "disabled");
+            custom_form_jq.find(".dynamic_form button").attr("disabled", "disabled").hide();
         }
     </script>
 {% endblock %}

@@ -13,5 +13,4 @@ class CustomFormCustomization(CustomizationBase):
         "custom_forms_create_staff": "",
         "custom_forms_create_user_office": "",
         "custom_forms_create_accounting_officer": "",
-        "custom_forms_self_approval_allowed": "",
     }

@@ -1,11 +1,12 @@
 import json
 
+from NEMO.models import User
 from NEMO.widgets.dynamic_form import DynamicForm
 from django import forms
 from django.contrib import admin
 from django.utils.safestring import mark_safe
 
-from NEMO_custom_forms.fields import RoleGroupPermissionChoiceField
+from NEMO_custom_forms.forms import RoleGroupPermissionChoiceFormField
 from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormApproval,
@@ -24,7 +25,7 @@ class CustomFormApprovalLevelFormset(forms.BaseInlineFormSet):
 
     def add_fields(self, form, index):
         super().add_fields(form, index)
-        form.fields["role"] = RoleGroupPermissionChoiceField(roles=True, groups=True)
+        form.fields["role"] = RoleGroupPermissionChoiceFormField(role_field=self.model.get_role_field())
 
 
 class CustomFormSpecialMappingFormset(forms.BaseInlineFormSet):
@@ -108,16 +109,52 @@ class CustomFormAdmin(admin.ModelAdmin):
     date_hierarchy = "last_updated"
 
 
+class CustomFormAutomaticNumberingForm(forms.ModelForm):
+    role = RoleGroupPermissionChoiceFormField(role_field=CustomFormAutomaticNumbering.get_role_field())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["role"].refresh_choices()
+
+    class Meta:
+        model = CustomFormAutomaticNumbering
+        fields = "__all__"
+        widgets = {
+            "numbering_template": forms.Textarea(attrs={"rows": 4, "cols": 75}),
+        }
+
+
 @admin.register(CustomFormAutomaticNumbering)
 class CustomFormAutomaticNumberingAdmin(admin.ModelAdmin):
-    list_display = ["template", "enabled", "numbering_group", "numbering_per_user"]
+    list_display = ["template", "enabled", "numbering_group", "numbering_per_user", "get_role_display"]
     list_filter = ["enabled", "numbering_per_user"]
     readonly_fields = ["custom_form_numbers"]
+    form = CustomFormAutomaticNumberingForm
+
+    @admin.display(description="Allowed role/group", ordering="role")
+    def get_role_display(self, obj: CustomFormAutomaticNumbering):
+        return obj.get_role_display()
 
     def custom_form_numbers(self, obj: CustomFormAutomaticNumbering):
         current_number = custom_forms_current_numbers(obj.template)
+        display_list = ""
         if current_number:
-            number_list = "".join([f"<li>{item}</li>" for item in current_number])
-            return mark_safe(f"Current form numbers:<ul>{number_list}</ul>")
+            if obj.numbering_group and obj.numbering_per_user:
+                for group, value in current_number.items():
+                    display_list += f'<li style="list-style: inherit">{group}<ul style="margin-left: 20px">'
+                    for user_id, number in value.items():
+                        user = User.objects.filter(id=user_id).first()
+                        user = user.username if user else user_id
+                        display_list += f'<li style="list-style: inherit"><u>{user}</u>: {number}</li>'
+                    display_list += "</ul></li>"
+            elif obj.numbering_group:
+                for group, number in current_number.items():
+                    display_list += f'<li style="list-style: inherit"><u>{group}</u>: {number}</li>'
+            elif obj.numbering_per_user:
+                for user_id, number in current_number.items():
+                    user = User.objects.filter(id=user_id).first()
+                    user = user.username if user else user_id
+                    display_list += f'<li style="list-style: inherit"><u>{user}</u>: {number}</li>'
+            return mark_safe(f'Current form numbers:<ul style="margin-left: 20px">{display_list}</ul>')
         else:
             return "No current form numbers recorded"

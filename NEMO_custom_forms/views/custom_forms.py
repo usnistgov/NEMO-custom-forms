@@ -56,23 +56,6 @@ def can_create_custom_forms(user: User) -> bool:
     )
 
 
-def can_approve_custom_form(user: User, custom_form: CustomForm, level_id=None) -> bool:
-    reviewers = custom_form.next_approval_candidates()
-    self_approval_allowed = CustomFormCustomization.get_bool("custom_forms_self_approval_allowed")
-    if not self_approval_allowed and custom_form.creator in reviewers:
-        reviewers.remove(custom_form.creator)
-    return user in reviewers
-
-
-def can_edit_custom_form(user: User, custom_form: CustomForm) -> bool:
-    if custom_form.cancelled or custom_form.status in [
-        CustomForm.FormStatus.DENIED,
-        CustomForm.FormStatus.FULFILLED,
-    ]:
-        return False
-    return can_create_custom_forms(user) and custom_form.creator == user or can_approve_custom_form(user, custom_form)
-
-
 class CustomFormForm(forms.ModelForm):
 
     def __init__(self, *args, template: CustomFormPDFTemplate = None, **kwargs):
@@ -117,7 +100,6 @@ def custom_forms(request):
         "page": page,
         "pdf_templates": CustomFormPDFTemplate.objects.filter(enabled=True),
         "user_can_add": can_create_custom_forms(request.user),
-        "self_approval_allowed": CustomFormCustomization.get_bool("custom_forms_self_approval_allowed"),
     }
     return render(request, "NEMO_custom_forms/custom_forms.html", dictionary)
 
@@ -186,15 +168,16 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
         except CustomFormPDFTemplate.DoesNotExist:
             return render(request, "NEMO_custom_forms/choose_template.html", {"pdf_templates": templates})
 
+    # Return to custom forms if trying to approve but not allowed
     approval_level = custom_form.next_approval_level() if custom_form else None
-    if is_approval and approval_level and not can_approve_custom_form(user, custom_form, approval_level.id):
+    if is_approval and approval_level and not custom_form.can_approve(user):
         return redirect("landing")
 
     edit = bool(custom_form)
 
     form = CustomFormForm(request.POST or None, instance=custom_form, template=pdf_template)
 
-    if edit and not can_edit_custom_form(user, custom_form):
+    if edit and not custom_form.can_edit(user):
         # because this can be a GET, we need to initialize cleaned_data
         form.cleaned_data = getattr(form, "cleaned_data", {})
         if custom_form.cancelled:
@@ -210,7 +193,7 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
         ).render("custom_form_fields_group", pdf_template.id),
         "selected_template": pdf_template,
         "approval_level": approval_level,
-        "self_approval_allowed": CustomFormCustomization.get_bool("custom_forms_self_approval_allowed"),
+        "readonly": edit and not custom_form.can_edit(user),
     }
 
     if request.method == "POST":
@@ -233,7 +216,7 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
                     pdf_template, "customformautomaticnumbering", None
                 )
                 auto_generate_parameter = request.POST.get("auto_generate", "false") == "true"
-                if custom_form and not custom_form.form_number and automatic_numbering and auto_generate_parameter:
+                if (not custom_form or not custom_form.form_number) and automatic_numbering and auto_generate_parameter:
                     form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
 
                 if not is_approval or approval_level.can_edit_form:
@@ -266,7 +249,9 @@ def generate_custom_form_number(request, custom_form_template_id):
         custom_form_template, "customformautomaticnumbering", None
     )
     if automatic_numbering:
-        return JsonResponse({"form_number": automatic_numbering.next_custom_form_number(request.user)})
+        next_number = automatic_numbering.next_custom_form_number(request.user)
+        if next_number:
+            return JsonResponse({"form_number": next_number})
     return HttpResponseBadRequest("You are not allowed to generate this form number")
 
 
@@ -275,7 +260,7 @@ def generate_custom_form_number(request, custom_form_template_id):
 def cancel_custom_form(request, custom_form_id):
     custom_form = get_object_or_404(CustomForm, pk=custom_form_id)
     user: User = request.user
-    if can_edit_custom_form(user, custom_form):
+    if custom_form.can_edit(user):
         custom_form.cancel(user)
     return redirect("custom_forms")
 
@@ -285,11 +270,7 @@ def cancel_custom_form(request, custom_form_id):
 def render_custom_form_pdf(request, custom_form_id):
     user: User = request.user
     custom_form = get_object_or_404(CustomForm, pk=custom_form_id)
-    if (
-        not can_view_custom_forms(user)
-        or not can_edit_custom_form(user, custom_form)
-        or not can_create_custom_forms(user)
-    ):
+    if not can_view_custom_forms(user) or not custom_form.can_edit(user) or not can_create_custom_forms(user):
         return redirect("landing")
 
     merged_pdf_bytes = merge_documents(
@@ -313,7 +294,6 @@ def form_fields_group(request, form_id, group_name):
     )
 
 
-# TODO: figure out setting the form number automatically and having permissions for who can do it.
-# TODO: make form readonly when approving and not allowed to edit
 # TODO: make document upload work with type
 # TODO: add tabs for each template in list of forms
+# TODO: maybe allow multiple permissions/groups
