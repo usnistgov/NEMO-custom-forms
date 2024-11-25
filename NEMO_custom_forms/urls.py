@@ -8,9 +8,10 @@ urlpatterns = [
         include(
             [
                 path("", custom_forms.custom_forms, name="custom_forms"),
+                path("<int:custom_form_template_id>/", custom_forms.custom_forms, name="custom_forms"),
                 path("create/", custom_forms.create_custom_form, name="create_custom_form"),
                 path(
-                    "create/<int:pdf_template_id>/",
+                    "create/<int:custom_form_template_id>/",
                     custom_forms.create_custom_form,
                     name="create_custom_form_with_template",
                 ),

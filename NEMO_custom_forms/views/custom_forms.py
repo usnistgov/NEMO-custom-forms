@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict
 
 from NEMO.decorators import administrator_required
 from NEMO.exceptions import RequiredUnansweredQuestionsException
@@ -89,8 +89,11 @@ class CustomFormForm(forms.ModelForm):
 @login_required
 @user_passes_test(can_view_custom_forms)
 @require_GET
-def custom_forms(request):
+def custom_forms(request, custom_form_template_id=None):
+    selected_template = CustomFormPDFTemplate.objects.filter(id=custom_form_template_id).first()
     custom_form_list = CustomForm.objects.filter(cancelled=False)
+    if selected_template:
+        custom_form_list = custom_form_list.filter(template=selected_template)
     page = SortedPaginator(custom_form_list, request, order_by="-last_updated").get_current_page()
 
     if bool(request.GET.get("csv", False)):
@@ -98,10 +101,29 @@ def custom_forms(request):
 
     dictionary = {
         "page": page,
-        "pdf_templates": CustomFormPDFTemplate.objects.filter(enabled=True),
         "user_can_add": can_create_custom_forms(request.user),
+        **get_dictionary_for_base(selected_template),
     }
     return render(request, "NEMO_custom_forms/custom_forms.html", dictionary)
+
+
+@administrator_required
+@require_GET
+def custom_form_templates(request):
+    custom_form_template_list = CustomFormPDFTemplate.objects.filter(enabled=True)
+    page = SortedPaginator(custom_form_template_list, request, order_by="name").get_current_page()
+
+    dictionary = {"page": page, **get_dictionary_for_base(template=None, templates=True)}
+
+    return render(request, "NEMO_custom_forms/custom_form_templates.html", dictionary)
+
+
+def get_dictionary_for_base(template: Optional[CustomFormPDFTemplate], templates=False) -> Dict:
+    return {
+        "title": f"{template.name} forms" if template else "Template list" if templates else "All forms",
+        "selected_template": template,
+        "form_templates": CustomFormPDFTemplate.objects.filter(enabled=True),
+    }
 
 
 def export_custom_forms(custom_form_list: QuerySetType[CustomForm]):
@@ -134,39 +156,30 @@ def export_custom_forms(custom_form_list: QuerySetType[CustomForm]):
     return response
 
 
-@administrator_required
-@require_GET
-def custom_form_templates(request):
-    custom_form_template_list = CustomFormPDFTemplate.objects.filter(enabled=True)
-    page = SortedPaginator(custom_form_template_list, request, order_by="name").get_current_page()
-
-    return render(request, "NEMO_custom_forms/custom_form_templates.html", {"page": page})
-
-
 @login_required
 @require_http_methods(["GET", "POST"])
-def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
+def create_custom_form(request, custom_form_template_id=None, custom_form_id=None):
     user: User = request.user
     is_approval = [state for state in ["approve_form", "deny_form"] if state in request.POST]
 
     try:
         custom_form: Optional[CustomForm] = CustomForm.objects.get(id=custom_form_id)
-        pdf_template = custom_form.template
+        form_template = custom_form.template
     except CustomForm.DoesNotExist:
         if is_approval:
             raise
         custom_form = None
         if not can_create_custom_forms(user):
             return redirect("landing")
-        # only check for pdf template if it's a new form
+        # only check for template if it's a new form
         templates: QuerySetType[CustomFormPDFTemplate] = CustomFormPDFTemplate.objects.all()
         try:
             if templates.count() == 1:
-                pdf_template = templates.first()
+                form_template = templates.first()
             else:
-                pdf_template = CustomFormPDFTemplate.objects.get(id=pdf_template_id)
+                form_template = CustomFormPDFTemplate.objects.get(id=custom_form_template_id)
         except CustomFormPDFTemplate.DoesNotExist:
-            return render(request, "NEMO_custom_forms/choose_template.html", {"pdf_templates": templates})
+            return render(request, "NEMO_custom_forms/choose_template.html", {"form_templates": templates})
 
     # Return to custom forms if trying to approve but not allowed
     approval_level = custom_form.next_approval_level() if custom_form else None
@@ -175,7 +188,7 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
 
     edit = bool(custom_form)
 
-    form = CustomFormForm(request.POST or None, instance=custom_form, template=pdf_template)
+    form = CustomFormForm(request.POST or None, instance=custom_form, template=form_template)
 
     if edit and not custom_form.can_edit(user):
         # because this can be a GET, we need to initialize cleaned_data
@@ -189,16 +202,16 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
 
     dictionary = {
         "dynamic_form_fields": DynamicForm(
-            pdf_template.form_fields, custom_form.template_data if edit else None
-        ).render("custom_form_fields_group", pdf_template.id),
-        "selected_template": pdf_template,
+            form_template.form_fields, custom_form.template_data if edit else None
+        ).render("custom_form_fields_group", form_template.id),
+        "selected_template": form_template,
         "approval_level": approval_level,
         "readonly": edit and not custom_form.can_edit(user),
     }
 
     if request.method == "POST":
         try:
-            form.instance.template_data = DynamicForm(pdf_template.form_fields).extract(request)
+            form.instance.template_data = DynamicForm(form_template.form_fields).extract(request)
         except RequiredUnansweredQuestionsException as e:
             form.add_error("template_data", e.msg)
         if form.is_valid():
@@ -206,14 +219,14 @@ def create_custom_form(request, pdf_template_id=None, custom_form_id=None):
                 form.instance.creator = user
 
             form.instance.last_updated_by = user
-            form.instance.template = pdf_template
+            form.instance.template = form_template
 
             with transaction.atomic():
                 # all this need to happen at the same time or be rolled back
                 # auto-generate form number, form saving, and approval
 
                 automatic_numbering: CustomFormAutomaticNumbering = getattr(
-                    pdf_template, "customformautomaticnumbering", None
+                    form_template, "customformautomaticnumbering", None
                 )
                 auto_generate_parameter = request.POST.get("auto_generate", "false") == "true"
                 if (not custom_form or not custom_form.form_number) and automatic_numbering and auto_generate_parameter:
@@ -295,5 +308,5 @@ def form_fields_group(request, form_id, group_name):
 
 
 # TODO: make document upload work with type
-# TODO: add tabs for each template in list of forms
 # TODO: maybe allow multiple permissions/groups
+# TODO: make it optional to have a PDF form (generate it from the form itself)

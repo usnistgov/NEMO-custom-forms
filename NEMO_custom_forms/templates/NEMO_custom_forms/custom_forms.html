@@ -2,8 +2,12 @@
 {% load custom_tags_and_filters %}
 {% load custom_form_tags %}
 {% block add_button %}
-    {% if pdf_templates and user_can_add %}
-        {% url 'create_custom_form' as create_custom_form_url %}
+    {% if form_templates and user_can_add %}
+        {% if selected_template %}
+            {% url 'create_custom_form_with_template' selected_template.id as create_custom_form_url %}
+        {% else %}
+            {% url 'create_custom_form' as create_custom_form_url %}
+        {% endif %}
         {% button type="add" value="Add" url=create_custom_form_url %}
     {% endif %}
 {% endblock %}
@@ -14,7 +18,7 @@
             <tr>
                 <th>{% include 'pagination/pagination_column.html' with order_by='form_number' name='Form number' %}</th>
                 <th>{% include 'pagination/pagination_column.html' with order_by='creation_time' name='Created' %}</th>
-                <th>{% include 'pagination/pagination_column.html' with order_by='created_by' name='Created by' %}</th>
+                <th>{% include 'pagination/pagination_column.html' with order_by='creator' name='Created by' %}</th>
                 <th>{% include 'pagination/pagination_column.html' with order_by='status' name='Status' %}</th>
                 <th class="text-right button-column-minimum">Actions</th>
             </tr>
@@ -66,5 +70,5 @@
 {% endblock %}
 {% block table_empty_content %}
     You do not have any custom forms.
-    {% if not pdf_templates %}<br>{% endif %}
+    {% if not form_templates %}<br>{% endif %}
 {% endblock %}
