@@ -13,6 +13,7 @@ from NEMO.widgets.dynamic_form import get_submitted_user_inputs, validate_dynami
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.dispatch import receiver
 from django.template import Context, Template
 from django.template.defaultfilters import yesno
 from django.utils import timezone
@@ -101,7 +102,7 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     def get_filename_upload(self, filename):
         from django.template.defaultfilters import slugify
 
-        return f"{MEDIA_PROTECTED}/custom_forms/forms/{slugify(self.name)}.pdf"
+        return f"{MEDIA_PROTECTED}/custom_forms/templates/{slugify(self.name)}.pdf"
 
     def pdf_form_fields(self) -> KeysView[str]:
         return pdf_form_field_names(self.form.file)
@@ -163,6 +164,33 @@ class CustomFormPDFTemplate(SerializationByNameModel):
 
     class Meta:
         ordering = ["name"]
+
+
+# These two auto-delete pdf files from filesystem when they are unneeded:
+@receiver(models.signals.post_delete, sender=CustomFormPDFTemplate)
+def auto_delete_file_on_form_template_delete(sender, instance: CustomFormPDFTemplate, **kwargs):
+    """Deletes file from filesystem when corresponding `CustomFormPDFTemplate` object is deleted."""
+    if instance.form:
+        if os.path.isfile(instance.form.path):
+            os.remove(instance.form.path)
+
+
+@receiver(models.signals.pre_save, sender=CustomFormPDFTemplate)
+def auto_delete_file_on_form_template_change(sender, instance: CustomFormPDFTemplate, **kwargs):
+    """Deletes old file from filesystem when corresponding `CustomFormPDFTemplate` object is updated with new file."""
+    if not instance.pk:
+        return False
+
+    try:
+        old_file = CustomFormPDFTemplate.objects.get(pk=instance.pk).form
+    except CustomFormPDFTemplate.DoesNotExist:
+        return False
+
+    if old_file:
+        new_file = instance.form
+        if not old_file == new_file:
+            if os.path.isfile(old_file.path):
+                os.remove(old_file.path)
 
 
 class CustomFormAutomaticNumbering(BaseModel):

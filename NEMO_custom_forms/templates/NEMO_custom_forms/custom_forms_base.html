@@ -11,9 +11,6 @@
     <ul class="nav nav-tabs">
         {% url 'custom_form_templates' as custom_form_templates_url %}
         {% url 'custom_forms' as custom_forms_url %}
-        <li class="nav-item{% if not selected_template and custom_forms_url in request.path and not custom_form_templates_url in request.path %} active{% endif %}">
-            <a class="nav-link" href="{{ custom_forms_url }}">All forms</a>
-        </li>
         {% for form_template in form_templates %}
             {% url "custom_forms" form_template.id as custom_forms_template_url %}
             <li class="nav-item{% if custom_forms_template_url in request.path and not custom_form_templates_url in request.path %} active{% endif %}">

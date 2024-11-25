@@ -1,7 +1,7 @@
 {% extends 'NEMO_custom_forms/custom_forms_base.html' %}
 {% load custom_tags_and_filters %}
 {% block add_button %}
-    {% admin_add_url 'custom_forms' 'customformpdftemplate' request.path as add_custom_form_template_url %}
+    {% admin_add_url 'NEMO_custom_forms' 'customformpdftemplate' request.path as add_custom_form_template_url %}
     {% if add_custom_form_template_url %}
         {% button type="add" value="Add" url=add_custom_form_template_url %}
     {% endif %}
@@ -41,4 +41,4 @@
         </tbody>
     </table>
 {% endblock %}
-{% block table_empty_content %}You do not have any custom forms.{% endblock %}
+{% block table_empty_content %}You do not have any form templates{% endblock %}

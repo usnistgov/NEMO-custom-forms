@@ -1,5 +1,6 @@
 import json
 
+from NEMO.mixins import ModelAdminRedirectMixin
 from NEMO.models import User
 from NEMO.widgets.dynamic_form import DynamicForm
 from django import forms
@@ -62,7 +63,7 @@ class CustomFormPDFTemplateForm(forms.ModelForm):
 
 
 @admin.register(CustomFormPDFTemplate)
-class CustomFormPDFTemplateAdmin(admin.ModelAdmin):
+class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     form = CustomFormPDFTemplateForm
     list_display = ["name", "enabled", "form"]
     list_filter = ["enabled"]

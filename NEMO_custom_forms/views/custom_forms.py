@@ -91,9 +91,14 @@ class CustomFormForm(forms.ModelForm):
 @require_GET
 def custom_forms(request, custom_form_template_id=None):
     selected_template = CustomFormPDFTemplate.objects.filter(id=custom_form_template_id).first()
-    custom_form_list = CustomForm.objects.filter(cancelled=False)
-    if selected_template:
-        custom_form_list = custom_form_list.filter(template=selected_template)
+    if not selected_template:
+        selected_template = CustomFormPDFTemplate.objects.filter(enabled=True).first()
+        if selected_template:
+            return redirect("custom_forms", custom_form_template_id=selected_template.id)
+        else:
+            return redirect("custom_form_templates")
+    else:
+        custom_form_list = CustomForm.objects.filter(cancelled=False).filter(template=selected_template)
     page = SortedPaginator(custom_form_list, request, order_by="-last_updated").get_current_page()
 
     if bool(request.GET.get("csv", False)):
@@ -113,14 +118,14 @@ def custom_form_templates(request):
     custom_form_template_list = CustomFormPDFTemplate.objects.filter(enabled=True)
     page = SortedPaginator(custom_form_template_list, request, order_by="name").get_current_page()
 
-    dictionary = {"page": page, **get_dictionary_for_base(template=None, templates=True)}
+    dictionary = {"page": page, **get_dictionary_for_base()}
 
     return render(request, "NEMO_custom_forms/custom_form_templates.html", dictionary)
 
 
-def get_dictionary_for_base(template: Optional[CustomFormPDFTemplate], templates=False) -> Dict:
+def get_dictionary_for_base(template: CustomFormPDFTemplate = None) -> Dict:
     return {
-        "title": f"{template.name} forms" if template else "Template list" if templates else "All forms",
+        "title": f"{template.name} forms" if template else "Template list",
         "selected_template": template,
         "form_templates": CustomFormPDFTemplate.objects.filter(enabled=True),
     }
