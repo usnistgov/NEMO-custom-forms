@@ -95,7 +95,8 @@ class CustomFormDocumentsInline(admin.TabularInline):
 
 @admin.register(CustomFormDocumentType)
 class CustomFormDocumentTypeAdmin(admin.ModelAdmin):
-    list_display = ["name", "display_order"]
+    list_display = ["name", "form_template", "display_order"]
+    list_filter = ["form_template"]
 
 
 @admin.register(CustomForm)

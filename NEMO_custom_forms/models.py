@@ -551,7 +551,13 @@ class CustomForm(BaseModel):
 
 
 class CustomFormDocumentType(BaseCategory):
-    pass
+    form_template = models.ForeignKey(
+        CustomFormPDFTemplate,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text=_("Select a template this document type applies to. Leave blank for all."),
+    )
 
 
 class CustomFormDocuments(BaseDocumentModel):
@@ -563,6 +569,7 @@ class CustomFormDocuments(BaseDocumentModel):
 
     class Meta(BaseDocumentModel.Meta):
         verbose_name_plural = "Custom form documents"
+        ordering = ["display_order", "document_type__display_order"]
 
 
 class CustomFormApproval(BaseModel):

@@ -10,6 +10,7 @@ from NEMO.widgets.dynamic_form import DynamicForm, render_group_questions
 from django import forms
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
@@ -20,6 +21,7 @@ from NEMO_custom_forms.models import (
     CustomFormDocuments,
     CustomFormPDFTemplate,
     CustomFormAutomaticNumbering,
+    CustomFormDocumentType,
 )
 from NEMO_custom_forms.utilities import merge_documents
 
@@ -211,6 +213,14 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
         ).render("custom_form_fields_group", form_template.id),
         "selected_template": form_template,
         "approval_level": approval_level,
+        "document_types": CustomFormDocumentType.objects.filter(
+            Q(form_template=form_template) | Q(form_template__isnull=True)
+        ),
+        "custom_form_documents": (
+            custom_form.customformdocuments_set.order_by("display_order", "document_type__display_order")
+            if custom_form
+            else []
+        ),
         "readonly": edit and not custom_form.can_edit(user),
     }
 
@@ -241,8 +251,12 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                     new_custom_form = form.save()
 
                     # Handle file uploads
+                    document_type_id = request.POST.get("document_type_id", None) or None
+                    document_type = CustomFormDocumentType.objects.filter(id=document_type_id).first()
                     for f in request.FILES.getlist("form_documents"):
-                        CustomFormDocuments.objects.create(document=f, custom_form=new_custom_form)
+                        CustomFormDocuments.objects.create(
+                            document=f, custom_form=new_custom_form, document_type=document_type
+                        )
                     CustomFormDocuments.objects.filter(id__in=request.POST.getlist("remove_documents")).delete()
 
                     # TODO: create_custom_form_notification(new_custom_form)
@@ -312,6 +326,5 @@ def form_fields_group(request, form_id, group_name):
     )
 
 
-# TODO: make document upload work with type
 # TODO: maybe allow multiple permissions/groups
 # TODO: make it optional to have a PDF form (generate it from the form itself)
