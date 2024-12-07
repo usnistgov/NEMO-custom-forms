@@ -198,18 +198,24 @@ class CustomFormsTest(TestCase):
         self.user.is_staff = False
         self.user.save()
         self.assertFalse(custom_form.can_approve(self.user))
+        self.assertNotIn(self.user, custom_form.reviewers())
         self.staff_user, self.staff_project = create_user_and_project(is_staff=True)
         self.assertTrue(custom_form.can_approve(self.staff_user))
+        self.assertIn(self.staff_user, custom_form.reviewers())
         new_group = Group.objects.create(name="New Group")
         approval_level.role = new_group.id
         approval_level.save()
         self.assertFalse(custom_form.can_approve(self.staff_user))
+        self.assertNotIn(self.staff_user, custom_form.reviewers())
         self.user.groups.add(new_group)
         self.assertFalse(custom_form.can_approve(self.staff_user))
+        self.assertNotIn(self.staff_user, custom_form.reviewers())
         self.assertTrue(custom_form.can_approve(self.user))
+        self.assertIn(self.user, custom_form.reviewers())
         approval_level.self_approval_allowed = False
         approval_level.save()
         self.assertFalse(custom_form.can_approve(self.user))
+        self.assertNotIn(self.user, custom_form.reviewers())
 
     def test_next_custom_form_numbering_role(self):
         custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 12", id=12)

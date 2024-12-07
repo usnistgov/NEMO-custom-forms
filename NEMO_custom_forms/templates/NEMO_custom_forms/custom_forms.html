@@ -25,45 +25,47 @@
         </thead>
         <tbody>
             {% for custom_form in page %}
-                <tr class="{% if custom_form.status == "DENIED" %}danger{% elif custom_form.status == "FULFILLED" %}success{% else %}default{% endif %}">
-                    <td>{{ custom_form.form_number|default_if_none:"" }}</td>
-                    <td>{{ custom_form.creation_time|date:"SHORT_DATETIME_FORMAT" }}</td>
-                    <td>{{ custom_form.creator }}</td>
-                    <td>{{ custom_form.get_status_display }}</td>
-                    <td class="text-right text-nowrap">
-                        {% url 'render_custom_form_pdf' custom_form.id as render_custom_form_pdf_url %}
-                        {% button size="small" type="export" value="Render pdf" url=render_custom_form_pdf_url %}
-                        {% if custom_form.notes %}
-                            {% button icon="glyphicon-info-sign" type="warn" size="small" value="Notes" title=custom_form.notes|default_if_none:""|linebreaksbr data_toggle="tooltip-notes" %}
-                        {% endif %}
-                        {% if custom_form.customformdocuments_set.all %}
-                            <form method="post" style="display: inline">
-                                {% csrf_token %}
-                                <input type="hidden" name="title" value="{{ custom_form.name }} documents">
-                                {% for document in custom_form.customformdocuments_set.all %}
-                                    {% with content_type=document|content_type %}
-                                        <input type="hidden" name="document_info" value="{{ content_type.id }}__{{ document.id }}">
-                                    {% endwith %}
-                                {% endfor %}
-                                {% button icon="glyphicon-list-alt" size="small" type="export" value="Docs" onclick="document_view(this.form);" %}
-                            </form>
-                        {% endif %}
-                        {% url "edit_custom_form" custom_form.id as edit_custom_form_url %}
-                        {% if custom_form|can_edit_custom_form:user and not custom_form|can_approve_custom_form:user %}
-                            {% button size="small" type="edit" value="Edit" url=edit_custom_form_url %}
-                        {% elif user_can_add %}
-                            {% button size="small" type="view" value="View" url=edit_custom_form_url %}
-                        {% endif %}
-                        {% if custom_form.next_approval_level %}
-                            {% if custom_form|can_approve_custom_form:user %}
-                                {% if custom_form.next_approval_level.self_approval_allowed or user != custom_form.creator %}
-                                    {% url 'approval_custom_form' custom_form.id as approval_custom_form_url %}
-                                    {% button size="small" type="info" value="Approve" url=approval_custom_form_url %}
+                {% with status_denied=2 status_fulfilled=3 status_approved=1 %}
+                    <tr class="{% if custom_form.status == status_denied %}danger{% elif custom_form.status == status_fulfilled %}primary{% elif custom_form.status == status_approved %}success{% else %}default{% endif %}">
+                        <td>{{ custom_form.form_number|default_if_none:"" }}</td>
+                        <td>{{ custom_form.creation_time|date:"SHORT_DATETIME_FORMAT" }}</td>
+                        <td>{{ custom_form.creator }}</td>
+                        <td>{{ custom_form.get_status_display }}</td>
+                        <td class="text-right text-nowrap">
+                            {% url 'render_custom_form_pdf' custom_form.id as render_custom_form_pdf_url %}
+                            {% button size="small" type="export" value="Generate pdf" url=render_custom_form_pdf_url %}
+                            {% if custom_form.notes %}
+                                {% button icon="glyphicon-info-sign" type="warn" size="small" value="Notes" title=custom_form.notes|default_if_none:""|linebreaksbr data_toggle="tooltip-notes" %}
+                            {% endif %}
+                            {% if custom_form.customformdocuments_set.all %}
+                                <form method="post" style="display: inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="title" value="{{ custom_form.name }} documents">
+                                    {% for document in custom_form.customformdocuments_set.all %}
+                                        {% with content_type=document|content_type %}
+                                            <input type="hidden" name="document_info" value="{{ content_type.id }}__{{ document.id }}">
+                                        {% endwith %}
+                                    {% endfor %}
+                                    {% button icon="glyphicon-list-alt" size="small" type="export" value="Docs" onclick="document_view(this.form);" %}
+                                </form>
+                            {% endif %}
+                            {% url "edit_custom_form" custom_form.id as edit_custom_form_url %}
+                            {% if custom_form|can_edit_custom_form:user and not custom_form|can_approve_custom_form:user %}
+                                {% button size="small" type="edit" value="Edit" url=edit_custom_form_url %}
+                            {% elif user_can_add %}
+                                {% button size="small" type="view" value="View" url=edit_custom_form_url %}
+                            {% endif %}
+                            {% if custom_form.next_approval_level %}
+                                {% if custom_form|can_approve_custom_form:user %}
+                                    {% if custom_form.next_approval_level.self_approval_allowed or user != custom_form.creator %}
+                                        {% url 'approval_custom_form' custom_form.id as approval_custom_form_url %}
+                                        {% button size="small" type="info" value="Approve" url=approval_custom_form_url %}
+                                    {% endif %}
                                 {% endif %}
                             {% endif %}
-                        {% endif %}
-                    </td>
-                </tr>
+                        </td>
+                    </tr>
+                {% endwith %}
             {% endfor %}
         </tbody>
     </table>

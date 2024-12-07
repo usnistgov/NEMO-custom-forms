@@ -1,10 +1,18 @@
+from collections import defaultdict
 from typing import Optional, Dict
 
 from NEMO.decorators import administrator_required
 from NEMO.exceptions import RequiredUnansweredQuestionsException
-from NEMO.models import User
+from NEMO.models import User, Notification
 from NEMO.typing import QuerySetType
-from NEMO.utilities import BasicDisplayTable, export_format_datetime, format_datetime, slugify_underscore
+from NEMO.utilities import (
+    BasicDisplayTable,
+    export_format_datetime,
+    format_datetime,
+    slugify_underscore,
+    get_model_instance,
+)
+from NEMO.views.notifications import delete_notification
 from NEMO.views.pagination import SortedPaginator
 from NEMO.widgets.dynamic_form import DynamicForm, render_group_questions
 from django import forms
@@ -23,7 +31,8 @@ from NEMO_custom_forms.models import (
     CustomFormAutomaticNumbering,
     CustomFormDocumentType,
 )
-from NEMO_custom_forms.utilities import merge_documents
+from NEMO_custom_forms.notifications import create_custom_form_notification
+from NEMO_custom_forms.utilities import merge_documents, CUSTOM_FORM_NOTIFICATION, default_dict_to_regular_dict
 
 
 def can_view_custom_forms(user) -> bool:
@@ -109,7 +118,7 @@ def custom_forms(request, custom_form_template_id=None):
     dictionary = {
         "page": page,
         "user_can_add": can_create_custom_forms(request.user),
-        **get_dictionary_for_base(selected_template),
+        **get_dictionary_for_base(request, selected_template),
     }
     return render(request, "NEMO_custom_forms/custom_forms.html", dictionary)
 
@@ -120,16 +129,24 @@ def custom_form_templates(request):
     custom_form_template_list = CustomFormPDFTemplate.objects.filter(enabled=True)
     page = SortedPaginator(custom_form_template_list, request, order_by="name").get_current_page()
 
-    dictionary = {"page": page, **get_dictionary_for_base()}
+    dictionary = {"page": page, **get_dictionary_for_base(request)}
 
     return render(request, "NEMO_custom_forms/custom_form_templates.html", dictionary)
 
 
-def get_dictionary_for_base(template: CustomFormPDFTemplate = None) -> Dict:
+def get_dictionary_for_base(request, template: CustomFormPDFTemplate = None) -> Dict:
+    # Grab and organise notifications by template
+    notifications = Notification.objects.filter(notification_type=CUSTOM_FORM_NOTIFICATION, user=request.user)
+    custom_form_notifications = defaultdict(int)
+    for notification in notifications:
+        custom_form = get_model_instance(notification.content_type, notification.object_id)
+        custom_form_notifications[custom_form.template_id] += 1
+
     return {
         "title": f"{template.name} forms" if template else "Template list",
         "selected_template": template,
         "form_templates": CustomFormPDFTemplate.objects.filter(enabled=True),
+        "custom_form_notifications": default_dict_to_regular_dict(custom_form_notifications),
     }
 
 
@@ -194,10 +211,12 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
         return redirect("landing")
 
     edit = bool(custom_form)
+    approval_only = custom_form and custom_form.can_approve(user) and not custom_form.can_edit(user)
+    readonly = edit and not custom_form.can_edit(user)
 
     form = CustomFormForm(request.POST or None, instance=custom_form, template=form_template)
 
-    if edit and not custom_form.can_edit(user):
+    if edit and not custom_form.can_edit(user) and not approval_only:
         # because this can be a GET, we need to initialize cleaned_data
         form.cleaned_data = getattr(form, "cleaned_data", {})
         if custom_form.cancelled:
@@ -221,19 +240,21 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
             if custom_form
             else []
         ),
-        "readonly": edit and not custom_form.can_edit(user),
+        "readonly": readonly,
     }
 
     if request.method == "POST":
-        try:
-            form.instance.template_data = DynamicForm(form_template.form_fields).extract(request)
-        except RequiredUnansweredQuestionsException as e:
-            form.add_error("template_data", e.msg)
+        if not readonly:
+            try:
+                form.instance.template_data = DynamicForm(form_template.form_fields).extract(request)
+            except RequiredUnansweredQuestionsException as e:
+                form.add_error(field=None, error=e.msg)
         if form.is_valid():
-            if not edit:
+            if not edit and not form.instance.creator:
                 form.instance.creator = user
 
-            form.instance.last_updated_by = user
+            if not approval_only:
+                form.instance.last_updated_by = user
             form.instance.template = form_template
 
             with transaction.atomic():
@@ -247,23 +268,24 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                 if (not custom_form or not custom_form.form_number) and automatic_numbering and auto_generate_parameter:
                     form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
 
-                if not is_approval or approval_level.can_edit_form:
-                    new_custom_form = form.save()
+                if not is_approval or approval_level and approval_level.can_edit_form:
+                    custom_form = form.save()
 
                     # Handle file uploads
                     document_type_id = request.POST.get("document_type_id", None) or None
                     document_type = CustomFormDocumentType.objects.filter(id=document_type_id).first()
                     for f in request.FILES.getlist("form_documents"):
                         CustomFormDocuments.objects.create(
-                            document=f, custom_form=new_custom_form, document_type=document_type
+                            document=f, custom_form=custom_form, document_type=document_type
                         )
                     CustomFormDocuments.objects.filter(id__in=request.POST.getlist("remove_documents")).delete()
 
-                    # TODO: create_custom_form_notification(new_custom_form)
-                    # TODO: send_custom_form_received_email(request, new_custom_form, edit)
+                    # TODO: send_custom_form_received_email(request, custom_form, edit)
                 if is_approval:
+                    delete_notification(CUSTOM_FORM_NOTIFICATION, custom_form.id)
                     custom_form.process_approval(user, approval_level, is_approval == ["approve_form"])
-            return redirect("custom_forms")
+                create_custom_form_notification(custom_form)
+            return redirect("custom_forms", custom_form_template_id=custom_form.template_id)
         else:
             if request.FILES.getlist("form_documents") or request.POST.get("remove_documents"):
                 form.add_error(field=None, error="Custom form document changes were lost, please resubmit them.")
@@ -289,12 +311,12 @@ def generate_custom_form_number(request, custom_form_template_id):
 
 @login_required
 @require_http_methods(["GET", "POST"])
-def cancel_custom_form(request, custom_form_id):
+def delete_custom_form(request, custom_form_id):
     custom_form = get_object_or_404(CustomForm, pk=custom_form_id)
     user: User = request.user
     if custom_form.can_edit(user):
         custom_form.cancel(user)
-    return redirect("custom_forms")
+    return redirect("custom_forms", custom_form_template_id=custom_form.template_id)
 
 
 @login_required

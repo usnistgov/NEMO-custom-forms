@@ -22,7 +22,7 @@ urlpatterns = [
                 ),
                 path(
                     "<int:custom_form_id>/cancel/",
-                    custom_forms.cancel_custom_form,
+                    custom_forms.delete_custom_form,
                     name="cancel_custom_form",
                 ),
                 path(

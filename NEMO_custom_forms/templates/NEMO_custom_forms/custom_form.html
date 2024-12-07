@@ -190,10 +190,10 @@
             ajax_get("{% url "generate_template_custom_form_number" selected_template.id %}", undefined, set_auto_generated_form_number, ajax_failure_callback("Error auto-generating form number", "The form number could not be generate for the following reason: "))
         }
 
-        // Disable all form fields if form is readonly
+        // Disable all form fields (except csrf token) if form is readonly
         if (custom_form_jq.is("[readonly]"))
         {
-            custom_form_jq.find("input, textarea, select").attr("disabled", "disabled");
+            custom_form_jq.find('input:not([name="csrfmiddlewaretoken"]), textarea, select').attr("disabled", "disabled");
             custom_form_jq.find(".dynamic_form button").attr("disabled", "disabled").hide();
         }
     </script>

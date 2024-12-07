@@ -7,12 +7,14 @@ from typing import KeysView, List, Optional, Tuple
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
+from NEMO.typing import QuerySetType
 from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
 from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
 from NEMO.widgets.dynamic_form import get_submitted_user_inputs, validate_dynamic_form_model
 from django.contrib.auth.models import Group, Permission
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, FieldError
 from django.db import models
+from django.db.models import Q
 from django.dispatch import receiver
 from django.template import Context, Template
 from django.template.defaultfilters import yesno
@@ -81,6 +83,25 @@ class RoleGroupPermissionChoiceField(models.CharField):
             if permission:
                 return user.has_perm(permission)
         return False
+
+    def users_with_role(self, role: str) -> QuerySetType[User]:
+        users = User.objects.filter(is_active=True)
+        if role:
+            role_users = User.objects.none()
+            group_users = User.objects.none()
+            permission_users = User.objects.none()
+            if self.roles:
+                try:
+                    role_users = users.filter(**{role: True})
+                except FieldError:
+                    # we expect this if it's not a real role
+                    pass
+            if self.groups and role.isdigit():
+                group_users = users.filter(groups__id__in=role)
+            if self.permissions:
+                permission_users = users.filter(Q(user_permissions__codename__iexact=role) | Q(is_superuser=True))
+            return role_users | group_users | permission_users
+        return User.objects.none()
 
     def role_display(self, role: str) -> str:
         for key, value in self.role_choices():
@@ -545,6 +566,15 @@ class CustomForm(BaseModel):
         ]:
             return False
         return self.status == self.FormStatus.PENDING and self.creator == user or self.can_approve_edit(user)
+
+    def reviewers(self) -> QuerySetType[User]:
+        level = self.next_approval_level()
+        if not level:
+            return User.objects.none()
+        reviewer_list = level.get_role_field().users_with_role(level.role)
+        if not level.self_approval_allowed:
+            reviewer_list = reviewer_list.exclude(id=self.creator_id)
+        return reviewer_list
 
     def __str__(self):
         return f"{self.name} by {self.creator}"

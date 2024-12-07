@@ -18,6 +18,8 @@ CUSTOM_FORM_TEMPLATE_PREFIX = "t#"
 CUSTOM_FORM_GROUP_PREFIX = "g#"
 CUSTOM_FORM_USER_PREFIX = "u#"
 
+CUSTOM_FORM_NOTIFICATION = "customform"
+
 
 def default_dict_to_regular_dict(d):
     if isinstance(d, defaultdict):
@@ -48,11 +50,11 @@ def split_form_patterns(pattern: str, automatic_numbering: CustomFormAutomaticNu
         return {None: None}  # special case so it's not skipped later
     re_pattern += f"_{CUSTOM_FORM_TEMPLATE_PREFIX}{automatic_numbering.template.id}"
     if automatic_numbering.numbering_group:
-        re_pattern += f"_{CUSTOM_FORM_GROUP_PREFIX}(\d+)"
+        re_pattern += f"_{CUSTOM_FORM_GROUP_PREFIX}(\\d+)"
     if automatic_numbering.numbering_per_user:
-        re_pattern += f"_{CUSTOM_FORM_USER_PREFIX}(\d+)"
+        re_pattern += f"_{CUSTOM_FORM_USER_PREFIX}(\\d+)"
     if re_pattern:
-        pattern_regex = re.compile(r"{}".format(re_pattern))
+        pattern_regex = re.compile(re_pattern)
         match = pattern_regex.search(pattern)
         if match:
             if automatic_numbering.numbering_group:
