@@ -81,7 +81,7 @@
                       placeholder="Provide additional details if needed">{{ form.description.value|default_if_none:"" }}</textarea>
         </div>
         <div class="form-group">
-            <span class="control-label">Documents</span>
+            <span class="control-label">Documents (PDFs only)</span>
             <div>
                 <div style="margin-top: 15px">
                     {% if document_types %}
@@ -107,6 +107,8 @@
                            id="fileupload"
                            type="file"
                            name="form_documents"
+                           accept=".pdf,application/pdf"
+                           title="PDFs only"
                            multiple>
                 </div>
                 {% if form.instance.id %}
