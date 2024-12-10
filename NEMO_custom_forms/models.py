@@ -595,7 +595,7 @@ class CustomFormDocuments(BaseDocumentModel):
     document_type = models.ForeignKey(CustomFormDocumentType, null=True, blank=True, on_delete=models.SET_NULL)
 
     def get_filename_upload(self, filename):
-        return f"{MEDIA_PROTECTED}/custom_forms/{self.id}/{filename}"
+        return f"{MEDIA_PROTECTED}/custom_forms/{self.custom_form_id}/{filename}"
 
     class Meta(BaseDocumentModel.Meta):
         verbose_name_plural = "Custom form documents"
