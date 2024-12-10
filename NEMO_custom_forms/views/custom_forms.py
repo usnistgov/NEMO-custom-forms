@@ -324,7 +324,7 @@ def delete_custom_form(request, custom_form_id):
 def render_custom_form_pdf(request, custom_form_id):
     user: User = request.user
     custom_form = get_object_or_404(CustomForm, pk=custom_form_id)
-    if not can_view_custom_forms(user) or not custom_form.can_edit(user) or not can_create_custom_forms(user):
+    if not can_view_custom_forms(user) and not custom_form.can_edit(user) and not can_create_custom_forms(user):
         return redirect("landing")
 
     merged_pdf_bytes = merge_documents(
@@ -333,7 +333,7 @@ def render_custom_form_pdf(request, custom_form_id):
 
     pdf_response = HttpResponse(content_type="application/pdf")
     pdf_response["Content-Disposition"] = (
-        f"attachment; filename={slugify_underscore(custom_form.template.name)}_{custom_form.form_number}.pdf"
+        f"attachment; filename={slugify_underscore(custom_form.template.name)}_{custom_form.form_number or custom_form.id}.pdf"
     )
     pdf_response.write(merged_pdf_bytes)
     return pdf_response
