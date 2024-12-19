@@ -250,7 +250,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
             except RequiredUnansweredQuestionsException as e:
                 form.add_error(field=None, error=e.msg)
         if form.is_valid():
-            if not edit and not form.instance.creator:
+            if not edit and not form.instance.creator_id:
                 form.instance.creator = user
 
             if not approval_only:
@@ -350,3 +350,4 @@ def form_fields_group(request, form_id, group_name):
 
 # TODO: maybe allow multiple permissions/groups
 # TODO: make it optional to have a PDF form (generate it from the form itself)
+# TODO: add full pdf fields and test
