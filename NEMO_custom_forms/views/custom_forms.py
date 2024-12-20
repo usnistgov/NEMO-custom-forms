@@ -1,16 +1,16 @@
-from collections import defaultdict
-from typing import Optional, Dict
+from collections import OrderedDict, defaultdict
+from typing import Dict, List, Optional, Tuple
 
 from NEMO.decorators import administrator_required
 from NEMO.exceptions import RequiredUnansweredQuestionsException
-from NEMO.models import User, Notification
+from NEMO.models import Notification, User
 from NEMO.typing import QuerySetType
 from NEMO.utilities import (
     BasicDisplayTable,
     export_format_datetime,
     format_datetime,
-    slugify_underscore,
     get_model_instance,
+    slugify_underscore,
 )
 from NEMO.views.notifications import delete_notification
 from NEMO.views.pagination import SortedPaginator
@@ -26,13 +26,13 @@ from django.views.decorators.http import require_GET, require_http_methods
 from NEMO_custom_forms.customization import CustomFormCustomization
 from NEMO_custom_forms.models import (
     CustomForm,
-    CustomFormDocuments,
-    CustomFormPDFTemplate,
     CustomFormAutomaticNumbering,
     CustomFormDocumentType,
+    CustomFormDocuments,
+    CustomFormPDFTemplate,
 )
 from NEMO_custom_forms.notifications import create_custom_form_notification
-from NEMO_custom_forms.utilities import merge_documents, CUSTOM_FORM_NOTIFICATION, default_dict_to_regular_dict
+from NEMO_custom_forms.utilities import CUSTOM_FORM_NOTIFICATION, default_dict_to_regular_dict, merge_documents
 
 
 def can_view_custom_forms(user) -> bool:
@@ -115,12 +115,47 @@ def custom_forms(request, custom_form_template_id=None):
     if bool(request.GET.get("csv", False)):
         return export_custom_forms(custom_form_list.order_by("-last_updated"))
 
+    default_columns = [
+        ("form_number", "Form number"),
+        ("creation_time", "Created"),
+        ("creator", "Creator"),
+        ("status", "Status"),
+    ]
+
     dictionary = {
         "page": page,
         "user_can_add": can_create_custom_forms(request.user),
+        "template_columns": get_ordered_columns(selected_template, default_columns),
+        "default_columns": default_columns,
         **get_dictionary_for_base(request, selected_template),
     }
     return render(request, "NEMO_custom_forms/custom_forms.html", dictionary)
+
+
+# Reorder columns to fill in the gaps with the provided default columns
+def get_ordered_columns(selected_template: CustomFormPDFTemplate, default_columns: List[Tuple[str, str]]) -> Dict:
+    template_columns = {
+        column.display_order: (column.field_name, column.display_name)
+        for column in selected_template.customformdisplaycolumn_set.all()
+    }
+
+    if not template_columns:
+        return dict(enumerate(default_columns))
+
+    max_index = max(template_columns.keys())
+
+    gap_iter = iter(default_columns)
+
+    for i in range(1, max_index + 1 + len(default_columns)):
+        if i not in template_columns.keys():
+            try:
+                template_columns[i] = next(gap_iter)
+            except StopIteration:
+                # no more default columns to insert
+                pass
+
+    # order dict by key
+    return OrderedDict(sorted(template_columns.items()))
 
 
 @administrator_required
@@ -350,4 +385,4 @@ def form_fields_group(request, form_id, group_name):
 
 # TODO: maybe allow multiple permissions/groups
 # TODO: make it optional to have a PDF form (generate it from the form itself)
-# TODO: add full pdf fields and test
+# TODO: add all pdf fields for credit card order and test mapping

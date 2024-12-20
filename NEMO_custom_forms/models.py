@@ -5,14 +5,19 @@ import os
 import re
 from typing import KeysView, List, Optional, Tuple
 
-from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH
+from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CHAR_FIELD_SMALL_LENGTH
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
 from NEMO.typing import QuerySetType
 from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
 from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
-from NEMO.widgets.dynamic_form import get_submitted_user_inputs, validate_dynamic_form_model
+from NEMO.widgets.dynamic_form import (
+    DynamicForm,
+    PostUsageGroupQuestion,
+    get_submitted_user_inputs,
+    validate_dynamic_form_model,
+)
 from django.contrib.auth.models import Group, Permission
-from django.core.exceptions import ValidationError, FieldError
+from django.core.exceptions import FieldError, ValidationError
 from django.db import models
 from django.db.models import Q
 from django.dispatch import receiver
@@ -444,6 +449,43 @@ class CustomFormSpecialMapping(BaseModel):
     def __str__(self):
         level = f" (level {self.field_value_approval.level})" if self.field_value_approval else ""
         return f"{self.field_name} -> {self.field_value}{level}"
+
+
+class CustomFormDisplayColumn(BaseModel):
+    template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
+    field_name = models.CharField(
+        max_length=CHAR_FIELD_MEDIUM_LENGTH,
+        help_text=_("The pdf template field name whose value will be displayed in the table"),
+    )
+    display_order = models.PositiveIntegerField(help_text=_("The display order of the column."))
+    display_name = models.CharField(
+        max_length=CHAR_FIELD_SMALL_LENGTH,
+        null=True,
+        blank=True,
+        help_text=_("The column name to be displayed in the table. If not provided, the field name will be used"),
+    )
+
+    def clean(self):
+        errors = {}
+        if self.template_id:
+            dynamic_fields = DynamicForm(self.template.form_fields)
+            if self.field_name not in [
+                question.name
+                for question in dynamic_fields.questions
+                if not isinstance(question, PostUsageGroupQuestion)
+            ]:
+                errors["field_name"] = _(
+                    "This field name could not be found in the form fields (or is not an allowed field type)"
+                )
+            if self.display_order in self.template.customformdisplaycolumn_set.exclude(id=self.id).values_list(
+                "display_order", flat=True
+            ):
+                errors["display_order"] = _("This display order is already in use for another column")
+        if errors:
+            raise ValidationError(errors)
+
+    class Meta:
+        ordering = ["display_order"]
 
 
 class CustomForm(BaseModel):

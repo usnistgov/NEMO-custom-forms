@@ -13,6 +13,7 @@ from NEMO_custom_forms.models import (
     CustomFormApproval,
     CustomFormApprovalLevel,
     CustomFormAutomaticNumbering,
+    CustomFormDisplayColumn,
     CustomFormDocumentType,
     CustomFormDocuments,
     CustomFormPDFTemplate,
@@ -47,6 +48,10 @@ class CustomFormSpecialMappingAdminInline(admin.TabularInline):
     formset = CustomFormSpecialMappingFormset
 
 
+class CustomFormDisplayColumnInline(admin.TabularInline):
+    model = CustomFormDisplayColumn
+
+
 class CustomFormPDFTemplateForm(forms.ModelForm):
 
     class Media:
@@ -68,7 +73,7 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     list_display = ["name", "enabled", "form"]
     list_filter = ["enabled"]
     readonly_fields = ["_form_fields_preview"]
-    inlines = [CustomFormApprovalLevelAdminInline, CustomFormSpecialMappingAdminInline]
+    inlines = [CustomFormApprovalLevelAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
 
     def _form_fields_preview(self, obj: CustomFormPDFTemplate):
         if obj.id:
