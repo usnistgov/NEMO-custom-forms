@@ -1,7 +1,7 @@
 from NEMO.models import User
 from django import template
 
-from NEMO_custom_forms.models import CustomForm, CustomFormPDFTemplate, CustomFormAutomaticNumbering
+from NEMO_custom_forms.models import CustomForm, CustomFormAutomaticNumbering, CustomFormPDFTemplate
 
 register = template.Library()
 
@@ -15,8 +15,8 @@ def can_generate_custom_form_number(form_template: CustomFormPDFTemplate, user: 
 
 
 @register.filter
-def can_approve_custom_form(custom_form: CustomForm, user: User):
-    return custom_form.can_approve(user)
+def can_take_action_for_custom_form(custom_form: CustomForm, user: User):
+    return custom_form.can_take_action(user)
 
 
 @register.filter

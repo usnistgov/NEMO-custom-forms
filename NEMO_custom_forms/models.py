@@ -6,6 +6,7 @@ import re
 from typing import KeysView, List, Optional, Tuple
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CHAR_FIELD_SMALL_LENGTH
+from NEMO.fields import DynamicChoicesCharField
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
 from NEMO.typing import QuerySetType
 from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
@@ -43,7 +44,8 @@ from NEMO_custom_forms.utilities import (
 re_ends_with_number = r"\d+$"
 
 
-# CharField implementation with roles, groups, permissions choices
+# CharField role implementation with roles, groups, permissions choices
+# Usage: role = RoleGroupPermissionChoiceField(roles=True/False, groups=True/False, permissions=True/False)
 class RoleGroupPermissionChoiceField(models.CharField):
     def __init__(self, *args, roles=True, groups=False, permissions=False, **kwargs):
         self.roles = roles
@@ -84,7 +86,7 @@ class RoleGroupPermissionChoiceField(models.CharField):
                 if group:
                     return user.groups.filter(id=role).exists()
         if self.permissions:
-            permission = Permission.objects.filter(codename__iexact=role).exists()
+            permission = Permission.objects.filter(codename__iexact=role).first()
             if permission:
                 return user.has_perm(permission)
         return False
@@ -153,11 +155,11 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     def special_mappings_display(self):
         return "<br>".join([str(mapping) for mapping in self.customformspecialmapping_set.all()])
 
-    def approvals_display(self):
+    def actions_display(self):
         return "<br>".join(
             [
-                f"Level {approval.level} approval: {approval.get_role_display()}"
-                for approval in self.customformapprovallevel_set.all()
+                f"Rank {action.rank}, action: {action.get_action_type_display()}, role: {action.get_role_display()}"
+                for action in self.customformaction_set.all()
             ]
         )
 
@@ -299,29 +301,41 @@ class CustomFormAutomaticNumbering(BaseModel):
         ordering = ["template__name"]
 
 
-class CustomFormApprovalLevel(BaseModel):
+class CustomFormAction(BaseModel):
+    class ActionTypes(models.TextChoices):  # Inner Class
+        APPROVAL = "approval", "Approval"
+        NOTIFICATION = "acknowledgment", "Acknowledgment"
+
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
-    level = models.PositiveIntegerField(
-        help_text=_("The approval level number. Approval will be asked in ascending order")
+    action_type = DynamicChoicesCharField(
+        max_length=CHAR_FIELD_SMALL_LENGTH,
+        choices=ActionTypes.choices,
+        default=ActionTypes.APPROVAL,
+        help_text=_("The action type"),
+    )
+    rank = models.PositiveIntegerField(
+        help_text=_("The action rank number. Actions will be requested in ascending order")
     )
     role = RoleGroupPermissionChoiceField(
         roles=True,
         groups=True,
         verbose_name="Role/Group",
         max_length=CHAR_FIELD_MEDIUM_LENGTH,
-        help_text=_("The role/group required for users to approve"),
+        help_text=_("The role/group required for users to take the action"),
     )
-    self_approval_allowed = models.BooleanField(
+    self_action_allowed = models.BooleanField(
         default=False,
-        help_text=_("Check this box to allow the user who generates the form to approve it."),
+        help_text=_(
+            "Check this box to allow the user who creates the form to also take action on it (approve his own form for example)."
+        ),
     )
     can_edit_form = models.BooleanField(
-        default=True, help_text=_("Check this box if the reviewer can make changes to the form")
+        default=True, help_text=_("Check this box if the candidate can make changes to the form")
     )
 
     class Meta:
-        ordering = ["template", "level"]
-        unique_together = ["template", "level"]
+        ordering = ["template", "rank"]
+        unique_together = ["template", "rank"]
 
     def get_role_display(self):
         return self.get_role_field().role_display(self.role)
@@ -331,40 +345,32 @@ class CustomFormApprovalLevel(BaseModel):
         return cls._meta.get_field("role")
 
     def __str__(self):
-        return f"{self.template.name} level {self.level} approval: {self.get_role_display()}"
+        return f"{self.template.name} rank: {self.rank} action: {self.get_action_type_display()} role: {self.get_role_display()}"
 
 
 class CustomFormSpecialMapping(BaseModel):
-    class FieldValue(object):
-        FORM_CREATOR = "creator"
-        FORM_CREATION_TIME = "creation_time"
-        FORM_NUMBER = "number"
-        FORM_APPROVED = "approved"
-        FORM_APPROVED_BY = "approved_by"
-        FORM_APPROVAL_TIME = "approval_time"
-        Choices = (
-            (FORM_CREATOR, "Form creator"),
-            (FORM_CREATION_TIME, "Form creation time"),
-            (FORM_NUMBER, "Form number"),
-            (FORM_APPROVED, "Form approved/denied"),
-            (FORM_APPROVED_BY, "Form approved/denied by"),
-            (FORM_APPROVAL_TIME, "Form approval time"),
-        )
-        ApprovalValues = [FORM_APPROVED, FORM_APPROVED_BY, FORM_APPROVAL_TIME]
+    class FieldValue(models.TextChoices):  # Inner Class
+        FORM_CREATOR = "creator", "Form creator"
+        FORM_CREATION_TIME = "creation_time", "Form creation time"
+        FORM_NUMBER = "number", "Form number"
+        FORM_ACTION_TAKEN = "action_taken", "Form action (approved/denied/acknowledged) taken"
+        FORM_ACTION_TAKEN_BY = "action_taken_by", "Form action taken by"
+        FORM_ACTION_TAKEN_TIME = "action_taken_time", "Form action taken time"
+        ActionValues = [FORM_ACTION_TAKEN, FORM_ACTION_TAKEN_BY, FORM_ACTION_TAKEN_TIME]
 
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     field_name = models.CharField(
         max_length=CHAR_FIELD_MAXIMUM_LENGTH, help_text=_("The pdf template field name to map this value to")
     )
-    field_value = models.CharField(
-        max_length=CHAR_FIELD_MAXIMUM_LENGTH, choices=FieldValue.Choices, help_text=_("The special value to map it to")
+    field_value = DynamicChoicesCharField(
+        max_length=CHAR_FIELD_MAXIMUM_LENGTH, choices=FieldValue.choices, help_text=_("The special value to map it to")
     )
-    field_value_approval = models.ForeignKey(
-        CustomFormApprovalLevel,
+    field_value_action = models.ForeignKey(
+        CustomFormAction,
         null=True,
         blank=True,
         on_delete=models.CASCADE,
-        help_text=_("The approval level (for approval mappings only)"),
+        help_text=_("The action (for action mappings only)"),
     )
     field_value_boolean = models.CharField(
         max_length=CHAR_FIELD_MAXIMUM_LENGTH,
@@ -378,22 +384,20 @@ class CustomFormSpecialMapping(BaseModel):
         unique_together = ["template", "field_name"]
 
     def clean(self):
-        if self.field_value in self.FieldValue.ApprovalValues and not self.field_value_approval_id:
+        if self.field_value in self.FieldValue.ActionValues and not self.field_value_action_id:
+            raise ValidationError({"field_value_action": _("This field is required when using an action field value")})
+        if self.field_value not in self.FieldValue.ActionValues and self.field_value_action_id:
             raise ValidationError(
-                {"field_value_approval": _("This field is required when using an approval field value")}
+                {"field_value_action": _("This field should be left blank when using non action field values")}
             )
-        if self.field_value not in self.FieldValue.ApprovalValues and self.field_value_approval_id:
+        if self.field_value_boolean and self.field_value != self.FieldValue.FORM_ACTION_TAKEN:
             raise ValidationError(
-                {"field_value_approval": _("This field should be left blank when using non approval field values")}
-            )
-        if self.field_value_boolean and self.field_value != self.FieldValue.FORM_APPROVED:
-            raise ValidationError(
-                {"field_value_boolean": _("This field only applies to field value 'Form approved/denied'")}
+                {"field_value_boolean": _("This field only applies to field value 'Form action taken'")}
             )
         if self.template_id:
             if self.field_name not in self.template.pdf_form_fields():
                 raise ValidationError({"field_name": _("This field name could not be found in the template fields")})
-            if self.field_value == self.FieldValue.FORM_APPROVED:
+            if self.field_value == self.FieldValue.FORM_ACTION_TAKEN:
                 try:
                     true_value = yesno(True, self.field_value_boolean)
                     false_value = yesno(False, self.field_value_boolean)
@@ -436,19 +440,19 @@ class CustomFormSpecialMapping(BaseModel):
             return format_datetime(custom_form.creation_time, "SHORT_DATE_FORMAT")
         elif self.field_value == self.FieldValue.FORM_NUMBER:
             return custom_form.form_number or ""
-        elif self.field_value in self.FieldValue.ApprovalValues:
+        elif self.field_value in self.FieldValue.ActionValues:
             pass
-            # approval = custom_form.get_approval_for_level(self.field_value_approval.level)
+            # action = custom_form.get_action_record_for_rank(self.field_value_action.rank)
             # if self.field_value == self.FieldValue.FORM_APPROVED:
-            # 	return yesno(approval.approved, self.field_value_boolean)
-            # elif self.field_value == self.FieldValue.FORM_APPROVED_BY:
-            # 	return approval.approved_by.get_name()
-            # elif self.field_value == self.FieldValue.FORM_APPROVAL_TIME:
-            # 	return format_datetime(approval.approval_time, "SHORT_DATE_FORMAT")
+            # 	return yesno(action.action_result, self.field_value_boolean)
+            # elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY:
+            # 	return action.action_taken_by.get_name()
+            # elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_TIME:
+            # 	return format_datetime(action.action_time, "SHORT_DATE_FORMAT")
 
     def __str__(self):
-        level = f" (level {self.field_value_approval.level})" if self.field_value_approval else ""
-        return f"{self.field_name} -> {self.field_value}{level}"
+        rank = f" (level {self.field_value_action.rank})" if self.field_value_action else ""
+        return f"{self.field_name} -> {self.field_value}{rank}"
 
 
 class CustomFormDisplayColumn(BaseModel):
@@ -531,13 +535,13 @@ class CustomForm(BaseModel):
     def name(self) -> str:
         return self.form_number or f"{self.get_status_display()} Form {self.id}"
 
-    def next_approval_level(self) -> Optional[CustomFormApprovalLevel]:
-        for approval_level in self.template.customformapprovallevel_set.order_by("level"):
-            if not CustomFormApproval.objects.filter(approval_level=approval_level, custom_form=self).exists():
-                return approval_level
+    def next_action(self) -> Optional[CustomFormAction]:
+        for action in self.template.customformaction_set.order_by("rank"):
+            if not CustomFormActionRecord.objects.filter(action=action, custom_form=self).exists():
+                return action
 
-    def get_approval_for_level(self, approval_level: int) -> CustomFormApproval:
-        return self.customformapproval_set.filter(approval_level__level=approval_level).first()
+    def get_action_record_for_rank(self, rank: int) -> CustomFormActionRecord:
+        return self.customformactionrecord_set.filter(action__rank=rank).first()
 
     def get_filled_pdf_template(self) -> bytes:
         field_mappings = {}
@@ -560,19 +564,19 @@ class CustomForm(BaseModel):
                         data_input[f"{name}{i}"] = input_value
         return data_input
 
-    def process_approval(self, user: User, level: CustomFormApprovalLevel, approved: bool):
-        approval = CustomFormApproval()
-        approval.custom_form = self
-        approval.approved_by = user
-        approval.approved = bool(approved)
-        approval.approval_level = level
-        approval.save()
+    def process_action(self, user: User, action: CustomFormAction, action_value: bool):
+        action_record = CustomFormActionRecord()
+        action_record.custom_form = self
+        action_record.action_taken_by = user
+        action_record.action_result = bool(action_value)
+        action_record.action = action
+        action_record.save()
         # Denied, update status
-        if not approved:
+        if not action_value:
             self.status = self.FormStatus.DENIED
             self.save(update_fields=["status"])
-        # No more approvals needed, mark as APPROVED
-        if approved and not self.next_approval_level():
+        # No more actions needed, mark as APPROVED
+        if action_value and not self.next_action():
             self.status = self.FormStatus.APPROVED
             self.save(update_fields=["status"])
 
@@ -583,23 +587,23 @@ class CustomForm(BaseModel):
         self.cancellation_reason = reason
         self.save()
 
-    def can_approve(self, user: User) -> bool:
+    def can_take_action(self, user: User) -> bool:
         if not self.pk:
             return False
         if self.status != CustomForm.FormStatus.PENDING:
             return False
-        level = self.next_approval_level()
-        if not level:
+        action = self.next_action()
+        if not action:
             return False
-        if user == self.creator and not level.self_approval_allowed:
+        if user == self.creator and not action.self_action_allowed:
             return False
-        return level.get_role_field().has_user_role(level.role, user)
+        return action.get_role_field().has_user_role(action.role, user)
 
-    def can_approve_edit(self, user: User) -> bool:
-        level = self.next_approval_level()
-        if not level:
+    def can_take_action_and_edit(self, user: User) -> bool:
+        action = self.next_action()
+        if not action:
             return False
-        return self.can_approve(user) and level.can_edit_form
+        return self.can_take_action(user) and action.can_edit_form
 
     def can_edit(self, user: User) -> bool:
         if self.cancelled or self.status in [
@@ -607,16 +611,16 @@ class CustomForm(BaseModel):
             CustomForm.FormStatus.FULFILLED,
         ]:
             return False
-        return self.status == self.FormStatus.PENDING and self.creator == user or self.can_approve_edit(user)
+        return self.status == self.FormStatus.PENDING and self.creator == user or self.can_take_action_and_edit(user)
 
-    def reviewers(self) -> QuerySetType[User]:
-        level = self.next_approval_level()
-        if not level:
+    def next_action_candidates(self) -> QuerySetType[User]:
+        action = self.next_action()
+        if not action:
             return User.objects.none()
-        reviewer_list = level.get_role_field().users_with_role(level.role)
-        if not level.self_approval_allowed:
-            reviewer_list = reviewer_list.exclude(id=self.creator_id)
-        return reviewer_list
+        candidate_list = action.get_role_field().users_with_role(action.role)
+        if not action.self_action_allowed:
+            candidate_list = candidate_list.exclude(id=self.creator_id)
+        return candidate_list
 
     def __str__(self):
         return f"{self.name} by {self.creator}"
@@ -644,28 +648,36 @@ class CustomFormDocuments(BaseDocumentModel):
         ordering = ["display_order", "document_type__display_order"]
 
 
-class CustomFormApproval(BaseModel):
+class CustomFormActionRecord(BaseModel):
     custom_form = models.ForeignKey(CustomForm, on_delete=models.CASCADE)
-    approval_level = models.ForeignKey(CustomFormApprovalLevel, on_delete=models.CASCADE)
-    approval_time = models.DateTimeField(
-        auto_now_add=True, help_text=_("The date and time when the form was approved/denied.")
+    action = models.ForeignKey(CustomFormAction, on_delete=models.CASCADE)
+    action_type = DynamicChoicesCharField(
+        max_length=CHAR_FIELD_SMALL_LENGTH,
+        choices=CustomFormAction.ActionTypes.choices,
+        default=CustomFormAction.ActionTypes.APPROVAL,
+        help_text=_("The action type"),
     )
-    approved_by = models.ForeignKey(
+    action_time = models.DateTimeField(
+        auto_now_add=True, help_text=_("The date and time when the action was taken on this form.")
+    )
+    action_taken_by = models.ForeignKey(
         User,
         related_name="custom_forms_reviewed",
-        help_text=_("The user who approved the form"),
+        help_text=_("The user who took the action"),
         on_delete=models.CASCADE,
     )
-    approved = models.BooleanField(default=False, help_text=_("Whether this form was approved or not"))
+    action_result = models.BooleanField(default=False, help_text=_("Whether the action was approved/acknowledged"))
 
     class Meta:
-        ordering = ["-approval_time"]
-        unique_together = ("custom_form", "approval_level")
+        ordering = ["-action_time"]
+        unique_together = ("custom_form", "action")
 
     def clean(self):
         if self.custom_form_id:
             if self.custom_form.cancelled:
-                raise ValidationError({"custom_form": _("This form was cancelled and cannot be approved")})
+                raise ValidationError(
+                    {"custom_form": _("This form was cancelled and no further actions can be taken on it")}
+                )
             if self.custom_form.status in [
                 CustomForm.FormStatus.APPROVED,
                 CustomForm.FormStatus.DENIED,
@@ -674,11 +686,11 @@ class CustomFormApproval(BaseModel):
                 raise ValidationError(
                     {"custom_form": _(f"This form has already been {self.custom_form.get_status_display().lower()}")}
                 )
-            if self.approval_level_id:
-                if self.custom_form.next_approval_level() != self.approval_level:
-                    raise ValidationError({"approval_level": _("This form has already been approved at this level")})
-            if self.approved_by_id:
-                if not self.approval_level.self_approval_allowed and self.approved_by == self.custom_form.creator:
-                    raise ValidationError({"approved_by": _("The creator is not allowed to approve its own form")})
-                if not self.custom_form.can_approve(self.approved_by):
-                    raise ValidationError({"approved_by": _("This person is not allowed to approve this form")})
+            if self.action_id:
+                if self.custom_form.next_action() != self.action:
+                    raise ValidationError({"action": _("This action/rank has already been taken for this form")})
+            if self.action_taken_by_id:
+                if not self.action.self_action_allowed and self.action_taken_by == self.custom_form.creator:
+                    raise ValidationError({"action_taken_by": _("The creator is not allowed to approve its own form")})
+                if not self.custom_form.can_take_action(self.action_taken_by):
+                    raise ValidationError({"action_taken_by": _("This person is not allowed to approve this form")})

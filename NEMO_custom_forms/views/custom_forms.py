@@ -219,13 +219,13 @@ def export_custom_forms(custom_form_list: QuerySetType[CustomForm]):
 @require_http_methods(["GET", "POST"])
 def create_custom_form(request, custom_form_template_id=None, custom_form_id=None):
     user: User = request.user
-    is_approval = [state for state in ["approve_form", "deny_form"] if state in request.POST]
+    is_action = [state for state in ["approve_form", "deny_form", "acknowledge_form"] if state in request.POST]
 
     try:
         custom_form: Optional[CustomForm] = CustomForm.objects.get(id=custom_form_id)
         form_template = custom_form.template
     except CustomForm.DoesNotExist:
-        if is_approval:
+        if is_action:
             raise
         custom_form = None
         if not can_create_custom_forms(user):
@@ -241,17 +241,17 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
             return render(request, "NEMO_custom_forms/choose_template.html", {"form_templates": templates})
 
     # Return to custom forms if trying to approve but not allowed
-    approval_level = custom_form.next_approval_level() if custom_form else None
-    if is_approval and approval_level and not custom_form.can_approve(user):
+    action = custom_form.next_action() if custom_form else None
+    if is_action and action and not custom_form.can_take_action(user):
         return redirect("landing")
 
     edit = bool(custom_form)
-    approval_only = custom_form and custom_form.can_approve(user) and not custom_form.can_edit(user)
+    action_only = custom_form and custom_form.can_take_action(user) and not custom_form.can_edit(user)
     readonly = edit and not custom_form.can_edit(user)
 
     form = CustomFormForm(request.POST or None, instance=custom_form, template=form_template)
 
-    if edit and not custom_form.can_edit(user) and not approval_only:
+    if edit and not custom_form.can_edit(user) and not action_only:
         # because this can be a GET, we need to initialize cleaned_data
         form.cleaned_data = getattr(form, "cleaned_data", {})
         if custom_form.cancelled:
@@ -266,7 +266,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
             form_template.form_fields, custom_form.template_data if edit else None
         ).render("custom_form_fields_group", form_template.id),
         "selected_template": form_template,
-        "approval_level": approval_level,
+        "action": action,
         "document_types": CustomFormDocumentType.objects.filter(
             Q(form_template=form_template) | Q(form_template__isnull=True)
         ),
@@ -288,13 +288,13 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
             if not edit and not form.instance.creator_id:
                 form.instance.creator = user
 
-            if not approval_only:
+            if not action_only:
                 form.instance.last_updated_by = user
             form.instance.template = form_template
 
             with transaction.atomic():
                 # all this need to happen at the same time or be rolled back
-                # auto-generate form number, form saving, and approval
+                # auto-generate form number, form saving, and actions
 
                 automatic_numbering: CustomFormAutomaticNumbering = getattr(
                     form_template, "customformautomaticnumbering", None
@@ -303,7 +303,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                 if (not custom_form or not custom_form.form_number) and automatic_numbering and auto_generate_parameter:
                     form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
 
-                if not is_approval or approval_level and approval_level.can_edit_form:
+                if not is_action or action and action.can_edit_form:
                     custom_form = form.save()
 
                     # Handle file uploads
@@ -316,9 +316,9 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                     CustomFormDocuments.objects.filter(id__in=request.POST.getlist("remove_documents")).delete()
 
                     # TODO: send_custom_form_received_email(request, custom_form, edit)
-                if is_approval:
+                if is_action:
                     delete_notification(CUSTOM_FORM_NOTIFICATION, custom_form.id)
-                    custom_form.process_approval(user, approval_level, is_approval == ["approve_form"])
+                    custom_form.process_action(user, action, is_action == ["approve_form"])
                 create_custom_form_notification(custom_form)
             return redirect("custom_forms", custom_form_template_id=custom_form.template_id)
         else:

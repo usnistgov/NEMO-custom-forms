@@ -14,8 +14,8 @@
                 <th>{% include 'pagination/pagination_column.html' with order_by='name' name='Name' %}</th>
                 <th>{% include 'pagination/pagination_column.html' with order_by='form' name='PDF' %}</th>
                 <th>Special mappings</th>
-                <th>Approvals</th>
-                <th class="text-right button-column-minimum">Actions</th>
+                <th>Actions</th>
+                <th class="text-right button-column-minimum"></th>
             </tr>
         </thead>
         <tbody>
@@ -29,7 +29,7 @@
                         {% endwith %}
                     </td>
                     <td>{{ custom_form_template.special_mappings_display|safe|linebreaksbr }}</td>
-                    <td>{{ custom_form_template.approvals_display|safe|linebreaksbr }}</td>
+                    <td>{{ custom_form_template.actions_display|safe|linebreaksbr }}</td>
                     <td class="text-right text-nowrap">
                         {% admin_edit_url custom_form_template request.path as change_custom_form_template_url %}
                         {% if change_custom_form_template_url %}

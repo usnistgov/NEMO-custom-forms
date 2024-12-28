@@ -9,10 +9,10 @@ from NEMO_custom_forms.utilities import CUSTOM_FORM_NOTIFICATION
 
 
 def create_custom_form_notification(custom_form: CustomForm):
-    users_to_notify = set(custom_form.reviewers())
+    users_to_notify = set(custom_form.next_action_candidates())
     if custom_form.status == CustomForm.FormStatus.PENDING:
         users_to_notify.add(custom_form.creator)
-    expiration = timezone.now() + timedelta(days=30)  # 30 days for custom form approval to expire
+    expiration = timezone.now() + timedelta(days=30)  # 30 days for custom form action to expire
     for user in users_to_notify:
         # Only update users other than the one who last updated it
         if not custom_form.last_updated_by or custom_form.last_updated_by != user:

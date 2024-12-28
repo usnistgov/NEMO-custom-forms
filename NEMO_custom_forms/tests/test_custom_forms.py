@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from NEMO_custom_forms.models import (
     CustomForm,
-    CustomFormApprovalLevel,
+    CustomFormAction,
     CustomFormAutomaticNumbering,
     CustomFormPDFTemplate,
 )
@@ -187,35 +187,35 @@ class CustomFormsTest(TestCase):
         # reset all custom form settings
         Customization.objects.filter(name__startswith=CUSTOM_FORM_CURRENT_NUMBER_PREFIX).delete()
 
-    def test_approval_role(self):
+    def test_action_role(self):
         custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 11", id=11)
-        approval_level: CustomFormApprovalLevel = CustomFormApprovalLevel.objects.create(
-            template=custom_form_template, level=1, self_approval_allowed=True
+        action: CustomFormAction = CustomFormAction.objects.create(
+            template=custom_form_template, rank=1, self_action_allowed=True
         )
-        approval_level.role = "is_staff"
-        approval_level.save()
+        action.role = "is_staff"
+        action.save()
         custom_form: CustomForm = CustomForm.objects.create(template=custom_form_template, creator=self.user)
         self.user.is_staff = False
         self.user.save()
-        self.assertFalse(custom_form.can_approve(self.user))
-        self.assertNotIn(self.user, custom_form.reviewers())
+        self.assertFalse(custom_form.can_take_action(self.user))
+        self.assertNotIn(self.user, custom_form.next_action_candidates())
         self.staff_user, self.staff_project = create_user_and_project(is_staff=True)
-        self.assertTrue(custom_form.can_approve(self.staff_user))
-        self.assertIn(self.staff_user, custom_form.reviewers())
+        self.assertTrue(custom_form.can_take_action(self.staff_user))
+        self.assertIn(self.staff_user, custom_form.next_action_candidates())
         new_group = Group.objects.create(name="New Group")
-        approval_level.role = new_group.id
-        approval_level.save()
-        self.assertFalse(custom_form.can_approve(self.staff_user))
-        self.assertNotIn(self.staff_user, custom_form.reviewers())
+        action.role = new_group.id
+        action.save()
+        self.assertFalse(custom_form.can_take_action(self.staff_user))
+        self.assertNotIn(self.staff_user, custom_form.next_action_candidates())
         self.user.groups.add(new_group)
-        self.assertFalse(custom_form.can_approve(self.staff_user))
-        self.assertNotIn(self.staff_user, custom_form.reviewers())
-        self.assertTrue(custom_form.can_approve(self.user))
-        self.assertIn(self.user, custom_form.reviewers())
-        approval_level.self_approval_allowed = False
-        approval_level.save()
-        self.assertFalse(custom_form.can_approve(self.user))
-        self.assertNotIn(self.user, custom_form.reviewers())
+        self.assertFalse(custom_form.can_take_action(self.staff_user))
+        self.assertNotIn(self.staff_user, custom_form.next_action_candidates())
+        self.assertTrue(custom_form.can_take_action(self.user))
+        self.assertIn(self.user, custom_form.next_action_candidates())
+        action.self_action_allowed = False
+        action.save()
+        self.assertFalse(custom_form.can_take_action(self.user))
+        self.assertNotIn(self.user, custom_form.next_action_candidates())
 
     def test_next_custom_form_numbering_role(self):
         custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 12", id=12)

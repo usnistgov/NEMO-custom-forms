@@ -1,5 +1,3 @@
-import sys
-
 from django.apps import AppConfig
 
 
@@ -11,4 +9,6 @@ class CustomFormsConfig(AppConfig):
         from NEMO.plugins.utils import add_dynamic_notification_types
         from NEMO_custom_forms.utilities import CUSTOM_FORM_NOTIFICATION
 
-        add_dynamic_notification_types([(CUSTOM_FORM_NOTIFICATION, "Custom forms approval - notifies all reviewers")])
+        add_dynamic_notification_types(
+            [(CUSTOM_FORM_NOTIFICATION, "Custom forms action - notifies next action candidates")]
+        )

@@ -10,8 +10,8 @@ from django.utils.safestring import mark_safe
 from NEMO_custom_forms.forms import RoleGroupPermissionChoiceFormField
 from NEMO_custom_forms.models import (
     CustomForm,
-    CustomFormApproval,
-    CustomFormApprovalLevel,
+    CustomFormAction,
+    CustomFormActionRecord,
     CustomFormAutomaticNumbering,
     CustomFormDisplayColumn,
     CustomFormDocumentType,
@@ -22,8 +22,8 @@ from NEMO_custom_forms.models import (
 from NEMO_custom_forms.utilities import custom_forms_current_numbers
 
 
-class CustomFormApprovalLevelFormset(forms.BaseInlineFormSet):
-    model = CustomFormApprovalLevel
+class CustomFormActionFormset(forms.BaseInlineFormSet):
+    model = CustomFormAction
 
     def add_fields(self, form, index):
         super().add_fields(form, index)
@@ -35,12 +35,12 @@ class CustomFormSpecialMappingFormset(forms.BaseInlineFormSet):
 
     def add_fields(self, form, index):
         super().add_fields(form, index)
-        form.fields["field_value_approval"].queryset = CustomFormApprovalLevel.objects.filter(template=self.instance)
+        form.fields["field_value_action"].queryset = CustomFormAction.objects.filter(template=self.instance)
 
 
-class CustomFormApprovalLevelAdminInline(admin.TabularInline):
-    model = CustomFormApprovalLevel
-    formset = CustomFormApprovalLevelFormset
+class CustomFormActionAdminInline(admin.TabularInline):
+    model = CustomFormAction
+    formset = CustomFormActionFormset
 
 
 class CustomFormSpecialMappingAdminInline(admin.TabularInline):
@@ -73,7 +73,7 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     list_display = ["name", "enabled", "form"]
     list_filter = ["enabled"]
     readonly_fields = ["_form_fields_preview"]
-    inlines = [CustomFormApprovalLevelAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
+    inlines = [CustomFormActionAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
 
     def _form_fields_preview(self, obj: CustomFormPDFTemplate):
         if obj.id:
@@ -86,8 +86,8 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
             )
 
 
-class CustomFormApprovalInline(admin.TabularInline):
-    model = CustomFormApproval
+class CustomFormActionRecordInline(admin.TabularInline):
+    model = CustomFormActionRecord
 
     def __init__(self, parent_model, admin_site):
         super().__init__(parent_model, admin_site)
@@ -106,7 +106,7 @@ class CustomFormDocumentTypeAdmin(admin.ModelAdmin):
 
 @admin.register(CustomForm)
 class CustomFormAdmin(admin.ModelAdmin):
-    inlines = [CustomFormDocumentsInline, CustomFormApprovalInline]
+    inlines = [CustomFormDocumentsInline, CustomFormActionRecordInline]
     list_display = ["form_number", "status", "last_updated", "creator", "template", "cancelled"]
     list_filter = [
         ("creator", admin.RelatedOnlyFieldListFilter),

@@ -68,16 +68,16 @@
                                 </form>
                             {% endif %}
                             {% url "edit_custom_form" custom_form.id as edit_custom_form_url %}
-                            {% if custom_form|can_edit_custom_form:user and not custom_form|can_approve_custom_form:user %}
+                            {% if custom_form|can_edit_custom_form:user and not custom_form|can_take_action_for_custom_form:user %}
                                 {% button size="small" type="edit" value="Edit" url=edit_custom_form_url %}
                             {% elif user_can_add %}
                                 {% button size="small" type="view" value="View" url=edit_custom_form_url %}
                             {% endif %}
-                            {% if custom_form.next_approval_level %}
-                                {% if custom_form|can_approve_custom_form:user %}
-                                    {% if custom_form.next_approval_level.self_approval_allowed or user != custom_form.creator %}
-                                        {% url 'approval_custom_form' custom_form.id as approval_custom_form_url %}
-                                        {% button size="small" type="info" value="Approve" url=approval_custom_form_url %}
+                            {% if custom_form.next_action %}
+                                {% if custom_form|can_take_action_for_custom_form:user %}
+                                    {% if custom_form.next_action.self_action_allowed or user != custom_form.creator %}
+                                        {% url 'custom_form_action' custom_form.id as custom_form_action_url %}
+                                        {% button size="small" type="info" value="Approve" url=custom_form_action_url %}
                                     {% endif %}
                                 {% endif %}
                             {% endif %}

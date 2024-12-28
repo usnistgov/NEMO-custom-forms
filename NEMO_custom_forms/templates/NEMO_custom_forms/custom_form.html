@@ -13,8 +13,8 @@
         {% if readonly %}
             {{ selected_template.name }} form
         {% elif form.instance.id %}
-            {% if approval_level %}
-                {{ selected_template.name }} form approval
+            {% if action %}
+                {{ selected_template.name }} form {{ action.get_action_type_display }}
             {% else %}
                 Modify {{ selected_template.name|lower }} form
             {% endif %}
@@ -144,8 +144,8 @@
                     {% endif %}
                 </div>
                 <div class="col-xs-6 text-right">
-                    {% if form.instance|can_approve_custom_form:user %}
-                        {% if approval_level.self_approval_allowed or user != form.instance.creator %}
+                    {% if form.instance|can_take_action_for_custom_form:user %}
+                        {% if action.self_action_allowed or user != form.instance.creator %}
                             {% button type="save" submit=False name="approve_form" title="Approve form" icon="glyphicon-ok-circle" value="Approve form" onclick="confirm_review_dialog(this);" %}
                             {% button type="delete" submit=False name="deny_form" title="Deny form" icon="glyphicon-ban-circle" value="Deny form" onclick="confirm_review_dialog(this);" %}
                         {% endif %}

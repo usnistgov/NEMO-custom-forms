@@ -31,9 +31,9 @@ urlpatterns = [
                     name="render_custom_form_pdf",
                 ),
                 path(
-                    "<int:custom_form_id>/approval/",
+                    "<int:custom_form_id>/action/",
                     custom_forms.create_custom_form,
-                    name="approval_custom_form",
+                    name="custom_form_action",
                 ),
                 path("templates/", custom_forms.custom_form_templates, name="custom_form_templates"),
                 path(
