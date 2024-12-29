@@ -5,6 +5,7 @@ from NEMO.models import User
 from NEMO.widgets.dynamic_form import DynamicForm
 from django import forms
 from django.contrib import admin
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from NEMO_custom_forms.models import (
@@ -67,8 +68,24 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     form = CustomFormPDFTemplateForm
     list_display = ["name", "enabled", "form"]
     list_filter = ["enabled"]
-    readonly_fields = ["_form_fields_preview"]
+    readonly_fields = ["_pdf_form_fields", "_form_fields_preview"]
     inlines = [CustomFormActionAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
+
+    def _pdf_form_fields(self, obj: CustomFormPDFTemplate):
+        if obj.form:
+            container_id = f"toggle-fields-{obj.pk}"
+            toggle_link = format_html(
+                f'<a href="javascript:void(0);" onclick="$(\'#{container_id}\').toggle()">Show/Hide Fields</a>',
+                container_id,
+            )
+            fields_list = "".join(f"<li style='list-style: initial'>{field}</li>" for field in obj.pdf_form_fields())
+            fields_container = format_html(
+                '<div id="{}" style="display:none;"><ul style="margin-left:10px;">{}</ul></div>',
+                container_id,
+                mark_safe(fields_list),
+            )
+            return mark_safe(f"{toggle_link}<br>{fields_container}")
+        return ""
 
     def _form_fields_preview(self, obj: CustomFormPDFTemplate):
         if obj.id:
@@ -79,6 +96,7 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
                     form_validity_div,
                 )
             )
+        return ""
 
 
 class CustomFormActionRecordInline(admin.TabularInline):

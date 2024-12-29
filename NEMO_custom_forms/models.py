@@ -291,8 +291,8 @@ class CustomFormSpecialMapping(BaseModel):
         FORM_ACTION_TAKEN = "action_taken", "Form action (approved/denied/acknowledged) taken"
         FORM_ACTION_TAKEN_BY = "action_taken_by", "Form action taken by"
         FORM_ACTION_TAKEN_TIME = "action_taken_time", "Form action taken time"
-        ActionValues = [FORM_ACTION_TAKEN, FORM_ACTION_TAKEN_BY, FORM_ACTION_TAKEN_TIME]
 
+    action_values = [FieldValue.FORM_ACTION_TAKEN, FieldValue.FORM_ACTION_TAKEN_BY, FieldValue.FORM_ACTION_TAKEN_TIME]
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     field_name = models.CharField(
         max_length=CHAR_FIELD_MAXIMUM_LENGTH, help_text=_("The pdf template field name to map this value to")
@@ -319,9 +319,9 @@ class CustomFormSpecialMapping(BaseModel):
         unique_together = ["template", "field_name"]
 
     def clean(self):
-        if self.field_value in self.FieldValue.ActionValues and not self.field_value_action_id:
+        if self.field_value in self.action_values and not self.field_value_action_id:
             raise ValidationError({"field_value_action": _("This field is required when using an action field value")})
-        if self.field_value not in self.FieldValue.ActionValues and self.field_value_action_id:
+        if self.field_value not in self.action_values and self.field_value_action_id:
             raise ValidationError(
                 {"field_value_action": _("This field should be left blank when using non action field values")}
             )
@@ -375,15 +375,15 @@ class CustomFormSpecialMapping(BaseModel):
             return format_datetime(custom_form.creation_time, "SHORT_DATE_FORMAT")
         elif self.field_value == self.FieldValue.FORM_NUMBER:
             return custom_form.form_number or ""
-        elif self.field_value in self.FieldValue.ActionValues:
-            pass
-            # action = custom_form.get_action_record_for_rank(self.field_value_action.rank)
-            # if self.field_value == self.FieldValue.FORM_APPROVED:
-            # 	return yesno(action.action_result, self.field_value_boolean)
-            # elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY:
-            # 	return action.action_taken_by.get_name()
-            # elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_TIME:
-            # 	return format_datetime(action.action_time, "SHORT_DATE_FORMAT")
+        elif self.field_value in self.action_values:
+            action = custom_form.get_action_record_for_rank(self.field_value_action.rank)
+            if self.field_value == self.FieldValue.FORM_ACTION_TAKEN:
+                return yesno(action.action_result, self.field_value_boolean)
+            elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY:
+                return action.action_taken_by.get_name()
+            elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_TIME:
+                return format_datetime(action.action_time, "SHORT_DATE_FORMAT")
+        return ""
 
     def __str__(self):
         rank = f" (level {self.field_value_action.rank})" if self.field_value_action else ""
@@ -481,7 +481,10 @@ class CustomForm(BaseModel):
     def get_filled_pdf_template(self) -> bytes:
         field_mappings = {}
         for special_mapping in self.template.customformspecialmapping_set.all():
-            field_mappings[special_mapping.field_name] = special_mapping.get_value(self)
+            mapping_value = special_mapping.get_value(self)
+            if mapping_value is None:
+                mapping_value = ""
+            field_mappings[special_mapping.field_name] = mapping_value
 
         field_mappings = {**field_mappings, **self.get_template_data_input()}
 
