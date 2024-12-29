@@ -7,7 +7,6 @@ from django import forms
 from django.contrib import admin
 from django.utils.safestring import mark_safe
 
-from NEMO_custom_forms.forms import RoleGroupPermissionChoiceFormField
 from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormAction,
@@ -24,10 +23,6 @@ from NEMO_custom_forms.utilities import custom_forms_current_numbers
 
 class CustomFormActionFormset(forms.BaseInlineFormSet):
     model = CustomFormAction
-
-    def add_fields(self, form, index):
-        super().add_fields(form, index)
-        form.fields["role"] = RoleGroupPermissionChoiceFormField(role_field=self.model.get_role_field())
 
 
 class CustomFormSpecialMappingFormset(forms.BaseInlineFormSet):
@@ -117,11 +112,6 @@ class CustomFormAdmin(admin.ModelAdmin):
 
 
 class CustomFormAutomaticNumberingForm(forms.ModelForm):
-    role = RoleGroupPermissionChoiceFormField(role_field=CustomFormAutomaticNumbering.get_role_field())
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["role"].refresh_choices()
 
     class Meta:
         model = CustomFormAutomaticNumbering

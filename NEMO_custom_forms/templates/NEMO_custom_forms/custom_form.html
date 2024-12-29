@@ -39,7 +39,9 @@
                     <div class="form-group">
                         <div style="margin-bottom: 5px; display: flex; align-items: baseline; justify-content: space-between">
                             <label for="form_number">Form number</label>
-                            {% if not form.instance.form_number and selected_template|can_generate_custom_form_number:user %}
+                            {% if not selected_template.customformautomaticnumbering.role %}
+                                <input type="hidden" id="auto_generate" name="auto_generate" value="true" />
+                            {% elif not form.instance.form_number and selected_template|can_generate_custom_form_number:user %}
                                 <input type="hidden" id="auto_generate" name="auto_generate" value="false" />
                                 <button type="button"
                                         style="margin-left: 15px"
@@ -51,6 +53,7 @@
                                class="form-control"
                                name="form_number"
                                id="form_number"
+                               {% if not selected_template.customformautomaticnumbering.role %}placeholder="Automatically generated"{% endif %}
                                value="{% if form.instance.form_number %}{{ form.instance.form_number }}{% else %}{{ form.form_number.value|default_if_none:"" }}{% endif %}"
                                disabled />
                     </div>

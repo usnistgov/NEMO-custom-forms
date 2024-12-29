@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import KeysView, List, Optional, Tuple
+from typing import KeysView, List, Optional
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CHAR_FIELD_SMALL_LENGTH
-from NEMO.fields import DynamicChoicesCharField
+from NEMO.fields import DynamicChoicesCharField, RoleGroupPermissionChoiceField
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
 from NEMO.typing import QuerySetType
 from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
@@ -18,9 +18,8 @@ from NEMO.widgets.dynamic_form import (
     validate_dynamic_form_model,
 )
 from django.contrib.auth.models import Group, Permission
-from django.core.exceptions import FieldError, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q
 from django.dispatch import receiver
 from django.template import Context, Template
 from django.template.defaultfilters import yesno
@@ -42,79 +41,6 @@ from NEMO_custom_forms.utilities import (
 )
 
 re_ends_with_number = r"\d+$"
-
-
-# CharField role implementation with roles, groups, permissions choices
-# Usage: role = RoleGroupPermissionChoiceField(roles=True/False, groups=True/False, permissions=True/False)
-class RoleGroupPermissionChoiceField(models.CharField):
-    def __init__(self, *args, roles=True, groups=False, permissions=False, **kwargs):
-        self.roles = roles
-        self.groups = groups
-        self.permissions = permissions
-        super().__init__(*args, **kwargs)
-
-    def role_choices(self) -> List[Tuple[str, str]]:
-        role_choice_list = [("", "---------")]
-        if self.roles:
-            role_choice_list.extend(
-                [
-                    ("is_staff", "Role: Staff"),
-                    ("is_user_office", "Role: User Office"),
-                    ("is_accounting_officer", "Role: Accounting officers"),
-                    ("is_facility_manager", "Role: Facility managers"),
-                    ("is_superuser", "Role: Administrators"),
-                ]
-            )
-        if self.groups:
-            role_choice_list.extend([(str(group.id), f"Group: {group.name}") for group in Group.objects.all()])
-        if self.permissions:
-            role_choice_list.extend(
-                [(p["codename"], f'Permission: {p["name"]}') for p in Permission.objects.values("codename", "name")]
-            )
-        return role_choice_list
-
-    def has_user_role(self, role: str, user: User) -> bool:
-        if not user.is_active:
-            return False
-        if self.roles:
-            if hasattr(user, role):
-                return getattr(user, role, False)
-        if self.groups:
-            # check that it's a number
-            if quiet_int(role, None):
-                group = Group.objects.filter(id=role).exists()
-                if group:
-                    return user.groups.filter(id=role).exists()
-        if self.permissions:
-            permission = Permission.objects.filter(codename__iexact=role).first()
-            if permission:
-                return user.has_perm(permission)
-        return False
-
-    def users_with_role(self, role: str) -> QuerySetType[User]:
-        users = User.objects.filter(is_active=True)
-        if role:
-            role_users = User.objects.none()
-            group_users = User.objects.none()
-            permission_users = User.objects.none()
-            if self.roles:
-                try:
-                    role_users = users.filter(**{role: True})
-                except FieldError:
-                    # we expect this if it's not a real role
-                    pass
-            if self.groups and role.isdigit():
-                group_users = users.filter(groups__id__in=role)
-            if self.permissions:
-                permission_users = users.filter(Q(user_permissions__codename__iexact=role) | Q(is_superuser=True))
-            return role_users | group_users | permission_users
-        return User.objects.none()
-
-    def role_display(self, role: str) -> str:
-        for key, value in self.role_choices():
-            if key == role:
-                return value
-        return ""
 
 
 class CustomFormPDFTemplate(SerializationByNameModel):
@@ -247,16 +173,25 @@ class CustomFormAutomaticNumbering(BaseModel):
         ),
     )
     role = RoleGroupPermissionChoiceField(
+        null=True,
+        blank=True,
         roles=True,
         groups=True,
+        empty_label="Automatic upon creation",
         verbose_name="Role/Group",
         max_length=CHAR_FIELD_MEDIUM_LENGTH,
-        help_text=_("The role/group required for users to automatically generate the form number"),
+        help_text=_(
+            "The role/group required for users to automatically generate the form number. Leave blank to generate it upon creation without user action."
+        ),
     )
 
+    # getting the actual Field instance, not the role value
     @classmethod
     def get_role_field(cls) -> RoleGroupPermissionChoiceField:
         return cls._meta.get_field("role")
+
+    def generate_automatically(self) -> bool:
+        return not self.role
 
     def get_role_display(self):
         return self.get_role_field().role_display(self.role)
@@ -265,7 +200,7 @@ class CustomFormAutomaticNumbering(BaseModel):
         return self.get_role_field().has_user_role(self.role, user)
 
     def next_custom_form_number(self, user: User, save=False) -> str:
-        if self.enabled and self.can_generate_custom_form_number(user):
+        if self.enabled and (self.can_generate_custom_form_number(user) or self.generate_automatically()):
             current_number_customization = (
                 f"{CUSTOM_FORM_CURRENT_NUMBER_PREFIX}_{CUSTOM_FORM_TEMPLATE_PREFIX}{self.template_id}"
             )

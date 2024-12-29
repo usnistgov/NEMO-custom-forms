@@ -19,7 +19,7 @@ from django import forms
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
 from django.db.models import Q
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -301,6 +301,12 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                 )
                 auto_generate_parameter = request.POST.get("auto_generate", "false") == "true"
                 if (not custom_form or not custom_form.form_number) and automatic_numbering and auto_generate_parameter:
+                    if automatic_numbering.role and not automatic_numbering.get_role_field().has_user_role(
+                        automatic_numbering.role, user
+                    ):
+                        return HttpResponseForbidden(
+                            "You are not allowed to generate a form number for this form template."
+                        )
                     form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
 
                 if not is_action or action and action.can_edit_form:
