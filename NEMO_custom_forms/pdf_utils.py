@@ -57,7 +57,7 @@ def copy_and_fill_pdf_form(stream: Union[Union[str, IO], Path], field_key_values
                 for field in acro_form[InteractiveFormDictEntries.Fields]:
                     field_dict = field.get_object()
                     # Update the /Ff field to set the read-only flag
-                    if "/Ff" in field_dict:
+                    if FieldDictionaryAttributes.Ff in field_dict:
                         # Perform a bitwise OR to enable the read-only flag
                         field_dict[NameObject(FieldDictionaryAttributes.Ff)] = NumberObject(
                             field_dict[FieldDictionaryAttributes.Ff] | FieldDictionaryAttributes.FfBits.ReadOnly
