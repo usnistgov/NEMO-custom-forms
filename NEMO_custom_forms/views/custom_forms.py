@@ -32,7 +32,8 @@ from NEMO_custom_forms.models import (
     CustomFormPDFTemplate,
 )
 from NEMO_custom_forms.notifications import create_custom_form_notification
-from NEMO_custom_forms.utilities import CUSTOM_FORM_NOTIFICATION, default_dict_to_regular_dict, merge_documents
+from NEMO_custom_forms.pdf_utils import merge_documents
+from NEMO_custom_forms.utilities import CUSTOM_FORM_NOTIFICATION, default_dict_to_regular_dict
 
 
 def can_view_custom_forms(user) -> bool:

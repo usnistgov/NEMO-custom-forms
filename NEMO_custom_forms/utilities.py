@@ -1,17 +1,11 @@
 from __future__ import annotations
 
-import io
 import re
 from collections import defaultdict
-from typing import Dict, List, Tuple, Any, TYPE_CHECKING, Optional
-
-import requests
-from NEMO.utilities import utilities_logger
-from pypdf import PdfWriter, PdfReader
-from six import BytesIO
+from typing import Any, Dict, List, TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
-    from NEMO_custom_forms.models import CustomFormAutomaticNumbering, CustomFormPDFTemplate, CustomFormDocuments
+    from NEMO_custom_forms.models import CustomFormAutomaticNumbering, CustomFormPDFTemplate
 
 CUSTOM_FORM_CURRENT_NUMBER_PREFIX = "custom_form_current_number"
 CUSTOM_FORM_TEMPLATE_PREFIX = "t#"
@@ -85,30 +79,3 @@ def merge_form_dicts(dict_value_tuples: List[Tuple[dict, Any]], automatic_number
 
     # Convert defaultdict to a regular dict for the final result
     return default_dict_to_regular_dict(merged_dict)
-
-
-def merge_documents(document_list: List[bytes | CustomFormDocuments]) -> Optional[bytes]:
-    merger = PdfWriter()
-
-    for document in document_list:
-        try:
-            if isinstance(document, bytes):
-                doc_bytes = document
-            else:
-                doc_bytes = get_bytes_from_url_document(document.full_link())
-            with BytesIO(doc_bytes) as byte_stream:
-                pdf_file = PdfReader(byte_stream)
-                for page in range(len(pdf_file.pages)):
-                    merger.add_page(pdf_file.pages[page])
-        except:
-            utilities_logger.exception("Error opening or merging document")
-
-    with io.BytesIO() as byte_stream:
-        merger.write(byte_stream)
-        return byte_stream.getvalue()
-
-
-def get_bytes_from_url_document(document_url) -> bytes:
-    response = requests.get(document_url)
-    response.raise_for_status()
-    return response.content
