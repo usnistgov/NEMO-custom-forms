@@ -377,12 +377,13 @@ class CustomFormSpecialMapping(BaseModel):
             return custom_form.form_number or ""
         elif self.field_value in self.action_values:
             action = custom_form.get_action_record_for_rank(self.field_value_action.rank)
-            if self.field_value == self.FieldValue.FORM_ACTION_TAKEN:
-                return yesno(action.action_result, self.field_value_boolean)
-            elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY:
-                return action.action_taken_by.get_name()
-            elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_TIME:
-                return format_datetime(action.action_time, "SHORT_DATE_FORMAT")
+            if action:
+                if self.field_value == self.FieldValue.FORM_ACTION_TAKEN:
+                    return yesno(action.action_result, self.field_value_boolean)
+                elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY:
+                    return action.action_taken_by.get_name()
+                elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_TIME:
+                    return format_datetime(action.action_time, "SHORT_DATE_FORMAT")
         return ""
 
     def __str__(self):
@@ -407,15 +408,19 @@ class CustomFormDisplayColumn(BaseModel):
     def clean(self):
         errors = {}
         if self.template_id:
-            dynamic_fields = DynamicForm(self.template.form_fields)
-            if self.field_name not in [
-                question.name
-                for question in dynamic_fields.questions
-                if not isinstance(question, PostUsageGroupQuestion)
-            ]:
-                errors["field_name"] = _(
-                    "This field name could not be found in the form fields (or is not an allowed field type)"
-                )
+            try:
+                dynamic_fields = DynamicForm(self.template.form_fields)
+                if self.field_name not in [
+                    question.name
+                    for question in dynamic_fields.questions
+                    if not isinstance(question, PostUsageGroupQuestion)
+                ]:
+                    errors["field_name"] = _(
+                        "This field name could not be found in the form fields (or is not an allowed field type)"
+                    )
+            except:
+                # we are skipping this on purpose, since any errors from creating dynamic forms will be raised in the template itself
+                pass
             if self.display_order in self.template.customformdisplaycolumn_set.exclude(id=self.id).values_list(
                 "display_order", flat=True
             ):
@@ -498,8 +503,13 @@ class CustomForm(BaseModel):
                 data_input[question_name] = value
             else:
                 for i, input_values in enumerate(value, 1):
-                    for name, input_value in input_values.items():
-                        data_input[f"{name}{i}"] = input_value
+                    # special case if it's a list of one string, we set it as if that was just one string
+                    # This is especially useful for checkboxes
+                    if isinstance(input_values, str) and len(value) == 1:
+                        data_input[f"{question_name}"] = input_values
+                    elif isinstance(input_values, dict):
+                        for name, input_value in input_values.items():
+                            data_input[f"{name}{i}"] = input_value
         return data_input
 
     def process_action(self, user: User, action: CustomFormAction, action_value: bool):

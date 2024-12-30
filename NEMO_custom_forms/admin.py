@@ -78,7 +78,10 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
                 f'<a href="javascript:void(0);" onclick="$(\'#{container_id}\').toggle()">Show/Hide Fields</a>',
                 container_id,
             )
-            fields_list = "".join(f"<li style='list-style: initial'>{field}</li>" for field in obj.pdf_form_fields())
+            fields_list = "".join(
+                f"<li style='list-style: initial'>{field}{(': ' + str(obj.pdf_form_field_states(field))) if obj.pdf_form_field_states(field) else ''}</li>"
+                for field in obj.pdf_form_fields()
+            )
             fields_container = format_html(
                 '<div id="{}" style="display:none;"><ul style="margin-left:10px;">{}</ul></div>',
                 container_id,

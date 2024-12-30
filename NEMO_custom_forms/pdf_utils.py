@@ -9,6 +9,8 @@ import requests
 from charset_normalizer.md import getLogger
 from django.core.exceptions import ValidationError
 from pypdf import PdfReader, PdfWriter
+from pypdf.constants import CatalogDictionary, FieldDictionaryAttributes, InteractiveFormDictEntries
+from pypdf.generic import NameObject, NumberObject
 
 if TYPE_CHECKING:
     from NEMO_custom_forms.models import CustomFormDocuments
@@ -41,11 +43,30 @@ def copy_pdf(stream: Union[Union[str, IO], Path]) -> PdfWriter:
     return writer
 
 
-def copy_and_fill_pdf_form(stream: Union[Union[str, IO], Path], field_key_values: Dict) -> bytes:
+def copy_and_fill_pdf_form(stream: Union[Union[str, IO], Path], field_key_values: Dict, flatten=True) -> bytes:
     writer = copy_pdf(stream)
 
     for page in writer.pages:
         writer.update_page_form_field_values(writer.pages[page.page_number], field_key_values)
+
+    # "Flatten" pdf by setting all fields to readonly
+    if flatten:
+        if CatalogDictionary.ACRO_FORM in writer.root_object:
+            acro_form = writer.root_object[CatalogDictionary.ACRO_FORM]
+            if InteractiveFormDictEntries.Fields in acro_form:
+                for field in acro_form[InteractiveFormDictEntries.Fields]:
+                    field_dict = field.get_object()
+                    # Update the /Ff field to set the read-only flag
+                    if "/Ff" in field_dict:
+                        # Perform a bitwise OR to enable the read-only flag
+                        field_dict[NameObject(FieldDictionaryAttributes.Ff)] = NumberObject(
+                            field_dict[FieldDictionaryAttributes.Ff] | FieldDictionaryAttributes.FfBits.ReadOnly
+                        )
+                    else:
+                        # Add the /Ff entry if it doesn't already exist
+                        field_dict[NameObject(FieldDictionaryAttributes.Ff)] = NumberObject(
+                            FieldDictionaryAttributes.FfBits.ReadOnly
+                        )
 
     with BytesIO() as buffer:
         writer.write(buffer)

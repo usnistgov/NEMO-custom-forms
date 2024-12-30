@@ -81,7 +81,7 @@
                       name="notes"
                       id="notes"
                       maxlength="{{ form.fields.description.max_length }}"
-                      placeholder="Provide additional details if needed">{{ form.description.value|default_if_none:"" }}</textarea>
+                      placeholder="Provide additional details if needed">{{ form.notes.value|default_if_none:"" }}</textarea>
         </div>
         <div class="form-group">
             <span class="control-label">Documents (PDFs only)</span>
