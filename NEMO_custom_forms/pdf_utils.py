@@ -96,32 +96,38 @@ def add_signature_mappings_to_pdf(writer: PdfWriter, signature_mappings: Dict):
     for page in writer.pages:
         if PageAttributes.ANNOTS in page:
             page_annotations: Union[Dict, PdfObject] = page[PageAttributes.ANNOTS]
-            for field_name, field_value in signature_mappings.items():
-                # For each annotation on the page, check for the field name
-                for annotation in page_annotations:
-                    annotation_object = annotation.get_object()
-                    if field_value:
+            for field_name, signature_text in signature_mappings.items():
+                if signature_text:
+                    # For each annotation on the page, check for the field name
+                    for annotation in page_annotations:
+                        annotation_object = annotation.get_object()
                         # Check if the field name matches
                         if (
                             annotation_object.get(FieldDictionaryAttributes.T) == field_name
                             or annotation_object.get(FieldDictionaryAttributes.TU) == field_name
                         ):
-                            field_box = annotation_object.get(AnnotationDictionaryAttributes.Rect)
-                            field_box_width = field_box[2] - field_box[0]
-                            field_box_height = field_box[3] - field_box[1]
-                            text_as_image = create_signature_image_from_name(
-                                field_value, (field_box_width, field_box_height)
-                            )
+                            field_rect = annotation_object.get(AnnotationDictionaryAttributes.Rect)
+                            # Scale everything to render the image correctly, then scale back using PDF transform
+                            scale_factor = 5
+                            scaled_field_width = (field_rect[2] - field_rect[0]) * scale_factor
+                            scaled_field_height = (field_rect[3] - field_rect[1]) * scale_factor
+                            field_box = (scaled_field_width, scaled_field_height)
+                            max_font_size = 48 * scale_factor
+                            padding = 2 * scale_factor
+                            text_as_image = create_signature_image(signature_text, field_box, max_font_size, padding)
                             if text_as_image:
                                 signature_pdf_page = convert_image_to_pdf_page(text_as_image)
-                                signature_width = signature_pdf_page.mediabox[2] - signature_pdf_page.mediabox[0]
-                                signature_height = signature_pdf_page.mediabox[3] - signature_pdf_page.mediabox[1]
-                                horizontal_start = (field_box_width - signature_width) / 2
-                                vertical_start = (field_box_height - signature_height) / 2
+                                scaled_sign_width = signature_pdf_page.mediabox[2] - signature_pdf_page.mediabox[0]
+                                scaled_sign_height = signature_pdf_page.mediabox[3] - signature_pdf_page.mediabox[1]
+                                horizontal_start = (scaled_field_width - scaled_sign_width) / 2 / scale_factor
+                                vertical_start = (scaled_field_height - scaled_sign_height) / 2 / scale_factor
                                 page.merge_transformed_page(
                                     signature_pdf_page,
-                                    Transformation().translate(
-                                        field_box[0] + horizontal_start, field_box[1] + vertical_start
+                                    Transformation()
+                                    .scale(1 / scale_factor, 1 / scale_factor)
+                                    .translate(
+                                        field_rect[0] + horizontal_start,
+                                        field_rect[1] + vertical_start,
                                     ),
                                 )
 
@@ -166,14 +172,14 @@ def get_bytes_from_url_document(document_url) -> bytes:
     return response.content
 
 
-def create_signature_image_from_name(user_name, within_box=(), max_font_size=48, padding=2, color="black") -> Image:
+def create_signature_image(signature_text, within_box=(), max_font_size=48, padding=2, color="black") -> Image:
     """
     Generate a signature image from a given user name. This function uses a custom font to create a visually pleasing
     textual representation of the user's name as an image. The font size is dynamically adjusted to fit within the
     specified bounding box or maximum size, ensuring the resulting image fits prescribed constraints. Additionally,
     the image provides padding around the text for better visual appearance and uses a specified color.
 
-    :param user_name: The text that will appear as the content of the signature image.
+    :param signature_text: The text that will appear as the content of the signature image.
     :param within_box: An optional tuple consisting of (width, height) that defines the
         bounding box for the signature text. If not provided, no constraints on the box size are applied.
     :param max_font_size: The maximum font size to be used when rendering the signature. Defaults to 48.
@@ -190,7 +196,7 @@ def create_signature_image_from_name(user_name, within_box=(), max_font_size=48,
 
     # Try smaller font size until it fits
     while True:
-        text_bbox = tmp_draw.textbbox((0, 0), user_name, font=signature_font)
+        text_bbox = tmp_draw.textbbox((0, 0), signature_text, font=signature_font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
@@ -206,7 +212,7 @@ def create_signature_image_from_name(user_name, within_box=(), max_font_size=48,
         font_size -= 1
         if font_size < 1:  # Prevent infinite loop
             getLogger(__name__).warning(
-                f"Text: '{user_name}' cannot fit within the given box, even at the smallest font size, skipping"
+                f"Text: '{signature_text}' cannot fit within the given box, even at the smallest font size, skipping"
             )
             return None
         signature_font = ImageFont.truetype(signature_font_path, size=font_size)
@@ -215,7 +221,7 @@ def create_signature_image_from_name(user_name, within_box=(), max_font_size=48,
     signature_img = Image.new("RGBA", (total_width, total_height), (255, 255, 255, 0))  # Transparent background
     # Draw the text onto the image
     draw = ImageDraw.Draw(signature_img)
-    draw.text((padding, -padding), user_name, fill=color, font=signature_font)
+    draw.text((padding, -padding), signature_text, fill=color, font=signature_font)
 
     return signature_img
 
