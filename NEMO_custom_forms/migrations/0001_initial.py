@@ -90,7 +90,7 @@ class Migration(migrations.Migration):
                     models.FileField(
                         help_text="The pdf form",
                         upload_to=NEMO.utilities.document_filename_upload,
-                        validators=[NEMO_custom_forms.pdf_utils.validate_is_pdf_form],
+                        validators=[NEMO_custom_forms.pdf_utils.validate_pdf_form],
                     ),
                 ),
                 ("form_fields", models.TextField(help_text="JSON formatted fields list")),

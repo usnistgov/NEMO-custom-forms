@@ -393,3 +393,4 @@ def form_fields_group(request, form_id, group_name):
 # TODO: maybe allow multiple permissions/groups
 # TODO: make it optional to have a PDF form (generate it from the form itself)
 # TODO: add all pdf fields for credit card order and test mapping
+# TODO: check validation for custom forms action records

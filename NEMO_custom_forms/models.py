@@ -18,7 +18,7 @@ from NEMO.widgets.dynamic_form import (
     validate_dynamic_form_model,
 )
 from django.contrib.auth.models import Group, Permission
-from django.core.exceptions import ValidationError
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.db import models
 from django.dispatch import receiver
 from django.template import Context, Template
@@ -29,9 +29,9 @@ from django.utils.translation import gettext_lazy as _
 
 from NEMO_custom_forms.pdf_utils import (
     copy_and_fill_pdf_form,
-    pdf_form_field_names,
-    pdf_form_field_states_for_field,
-    validate_is_pdf_form,
+    get_pdf_form_field_names,
+    get_pdf_form_field_states_for_field,
+    validate_pdf_form,
 )
 from NEMO_custom_forms.utilities import (
     CUSTOM_FORM_CURRENT_NUMBER_PREFIX,
@@ -49,7 +49,7 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         max_length=CHAR_FIELD_MEDIUM_LENGTH, unique=True, help_text=_("The unique name for this form template")
     )
     form = models.FileField(
-        upload_to=document_filename_upload, validators=[validate_is_pdf_form], help_text=_("The pdf form")
+        upload_to=document_filename_upload, validators=[validate_pdf_form], help_text=_("The pdf form")
     )
     form_fields = models.TextField(help_text=_("JSON formatted fields list"))
 
@@ -59,10 +59,10 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         return f"{MEDIA_PROTECTED}/custom_forms/templates/{slugify(self.name)}.pdf"
 
     def pdf_form_fields(self) -> KeysView[str]:
-        return pdf_form_field_names(self.form.file)
+        return get_pdf_form_field_names(self.form.file)
 
     def pdf_form_field_states(self, field_name: str) -> List[str]:
-        return pdf_form_field_states_for_field(self.form.file, field_name)
+        return get_pdf_form_field_states_for_field(self.form.file, field_name)
 
     def form_fields_json(self) -> List:
         return json.loads(self.form_fields)
@@ -484,16 +484,22 @@ class CustomForm(BaseModel):
         return self.customformactionrecord_set.filter(action__rank=rank).first()
 
     def get_filled_pdf_template(self) -> bytes:
+        # we are splitting regular field mappings and "signature" mappings
+        # signature mapping will be stamped with a cursive font instead of regular form filling
         field_mappings = {}
+        signature_mappings = {}
         for special_mapping in self.template.customformspecialmapping_set.all():
             mapping_value = special_mapping.get_value(self)
             if mapping_value is None:
                 mapping_value = ""
-            field_mappings[special_mapping.field_name] = mapping_value
+            if special_mapping.field_value == CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY:
+                signature_mappings[special_mapping.field_name] = mapping_value
+            else:
+                field_mappings[special_mapping.field_name] = mapping_value
 
         field_mappings = {**field_mappings, **self.get_template_data_input()}
 
-        return copy_and_fill_pdf_form(self.template.form.file, field_mappings)
+        return copy_and_fill_pdf_form(self.template.form.file, field_mappings, signature_mappings)
 
     def get_template_data_input(self):
         form_inputs = get_submitted_user_inputs(self.template_data)
@@ -624,7 +630,7 @@ class CustomFormActionRecord(BaseModel):
         if self.custom_form_id:
             if self.custom_form.cancelled:
                 raise ValidationError(
-                    {"custom_form": _("This form was cancelled and no further actions can be taken on it")}
+                    {NON_FIELD_ERRORS: _("This form was cancelled and no further actions can be taken on it")}
                 )
             if self.custom_form.status in [
                 CustomForm.FormStatus.APPROVED,
@@ -632,9 +638,10 @@ class CustomFormActionRecord(BaseModel):
                 CustomForm.FormStatus.FULFILLED,
             ]:
                 raise ValidationError(
-                    {"custom_form": _(f"This form has already been {self.custom_form.get_status_display().lower()}")}
+                    {NON_FIELD_ERRORS: _(f"This form has already been {self.custom_form.get_status_display().lower()}")}
                 )
             if self.action_id:
+                # TODO: check this validation
                 if self.custom_form.next_action() != self.action:
                     raise ValidationError({"action": _("This action/rank has already been taken for this form")})
             if self.action_taken_by_id:
