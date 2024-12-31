@@ -102,11 +102,18 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
         return ""
 
 
-class CustomFormActionRecordInline(admin.TabularInline):
+class CustomFormActionRecordFormset(forms.BaseInlineFormSet):
     model = CustomFormActionRecord
 
-    def __init__(self, parent_model, admin_site):
-        super().__init__(parent_model, admin_site)
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        if hasattr(self.instance, "template"):
+            form.fields["action"].queryset = CustomFormAction.objects.filter(template=self.instance.template)
+
+
+class CustomFormActionRecordInline(admin.TabularInline):
+    model = CustomFormActionRecord
+    formset = CustomFormActionRecordFormset
 
 
 class CustomFormDocumentsInline(admin.TabularInline):
