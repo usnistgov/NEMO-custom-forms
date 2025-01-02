@@ -1,10 +1,14 @@
 import json
+import os
 
 from NEMO.mixins import ModelAdminRedirectMixin
 from NEMO.models import User
+from NEMO.utilities import copy_media_file, new_model_copy
 from NEMO.widgets.dynamic_form import DynamicForm
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db import transaction
+from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
@@ -20,6 +24,46 @@ from NEMO_custom_forms.models import (
     CustomFormSpecialMapping,
 )
 from NEMO_custom_forms.utilities import custom_forms_current_numbers
+
+
+@admin.action(description="Duplicate selected templates")
+def duplicate_custom_form_template(modeladmin, request, queryset):
+    for template in queryset.all():
+        with transaction.atomic():
+            template: CustomFormPDFTemplate = template
+            template_copy = new_model_copy(template)
+            template_copy.name = "Copy of " + template.name
+            if CustomFormPDFTemplate.objects.filter(name=template_copy.name).exists():
+                messages.error(request, f"Template with name {template_copy.name} already exists. Skipping.")
+            else:
+                new_form_name = template_copy.get_filename_upload(os.path.basename(template.form.name))
+                copy_media_file(template.form.name, new_form_name)
+                template_copy.form.name = new_form_name
+                template_copy.save()
+                for display_column in template.customformdisplaycolumn_set.all():
+                    display_column_copy = new_model_copy(display_column)
+                    display_column_copy.template = template_copy
+                    display_column_copy.save()
+                old_to_new_action_ids = {}
+                for action in template.customformaction_set.all():
+                    action_copy = new_model_copy(action)
+                    action_copy.template = template_copy
+                    action_copy.save()
+                    old_to_new_action_ids[action.id] = action_copy.id
+                for special_mapping in template.customformspecialmapping_set.all():
+                    special_mapping_copy = new_model_copy(special_mapping)
+                    special_mapping_copy.template = template_copy
+                    if special_mapping.field_value_action_id:
+                        special_mapping_copy.field_value_action_id = old_to_new_action_ids[
+                            special_mapping.field_value_action_id
+                        ]
+                    special_mapping_copy.save()
+                messages.success(
+                    request,
+                    mark_safe(
+                        f"Template {template.name} successfully duplicated to <a href='{reverse('admin:NEMO_custom_forms_customformpdftemplate_change', args=[template_copy.id])}'>{template_copy.name}</a>."
+                    ),
+                )
 
 
 class CustomFormActionFormset(forms.BaseInlineFormSet):
@@ -70,6 +114,7 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     list_filter = ["enabled"]
     readonly_fields = ["_pdf_form_fields", "_form_fields_preview"]
     inlines = [CustomFormActionAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
+    actions = [duplicate_custom_form_template]
 
     def _pdf_form_fields(self, obj: CustomFormPDFTemplate):
         if obj.form:

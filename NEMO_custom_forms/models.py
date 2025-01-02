@@ -9,7 +9,12 @@ from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CH
 from NEMO.fields import DynamicChoicesCharField, RoleGroupPermissionChoiceField
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
 from NEMO.typing import QuerySetType
-from NEMO.utilities import document_filename_upload, format_datetime, quiet_int
+from NEMO.utilities import (
+    document_filename_upload,
+    format_datetime,
+    quiet_int,
+    update_media_file_on_model_update,
+)
 from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
 from NEMO.widgets.dynamic_form import (
     DynamicForm,
@@ -125,26 +130,13 @@ class CustomFormPDFTemplate(SerializationByNameModel):
 def auto_delete_file_on_form_template_delete(sender, instance: CustomFormPDFTemplate, **kwargs):
     """Deletes file from filesystem when corresponding `CustomFormPDFTemplate` object is deleted."""
     if instance.form:
-        if os.path.isfile(instance.form.path):
-            os.remove(instance.form.path)
+        instance.form.delete(False)
 
 
 @receiver(models.signals.pre_save, sender=CustomFormPDFTemplate)
-def auto_delete_file_on_form_template_change(sender, instance: CustomFormPDFTemplate, **kwargs):
-    """Deletes old file from filesystem when corresponding `CustomFormPDFTemplate` object is updated with new file."""
-    if not instance.pk:
-        return False
-
-    try:
-        old_file = CustomFormPDFTemplate.objects.get(pk=instance.pk).form
-    except CustomFormPDFTemplate.DoesNotExist:
-        return False
-
-    if old_file:
-        new_file = instance.form
-        if not old_file == new_file:
-            if os.path.isfile(old_file.path):
-                os.remove(old_file.path)
+def auto_update_file_on_form_template_change(sender, instance: CustomFormPDFTemplate, **kwargs):
+    """Updates old file from filesystem when corresponding `CustomFormPDFTemplate` object is updated with new file."""
+    return update_media_file_on_model_update(instance, "form")
 
 
 class CustomFormAutomaticNumbering(BaseModel):
