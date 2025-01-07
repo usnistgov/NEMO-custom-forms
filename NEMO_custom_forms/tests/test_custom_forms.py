@@ -197,24 +197,24 @@ class CustomFormsTest(TestCase):
         custom_form: CustomForm = CustomForm.objects.create(template=custom_form_template, creator=self.user)
         self.user.is_staff = False
         self.user.save()
-        self.assertFalse(custom_form.can_take_action(self.user))
+        self.assertFalse(custom_form.can_take_next_action(self.user))
         self.assertNotIn(self.user, custom_form.next_action_candidates())
         self.staff_user, self.staff_project = create_user_and_project(is_staff=True)
-        self.assertTrue(custom_form.can_take_action(self.staff_user))
+        self.assertTrue(custom_form.can_take_next_action(self.staff_user))
         self.assertIn(self.staff_user, custom_form.next_action_candidates())
         new_group = Group.objects.create(name="New Group")
         action.role = new_group.id
         action.save()
-        self.assertFalse(custom_form.can_take_action(self.staff_user))
+        self.assertFalse(custom_form.can_take_next_action(self.staff_user))
         self.assertNotIn(self.staff_user, custom_form.next_action_candidates())
         self.user.groups.add(new_group)
-        self.assertFalse(custom_form.can_take_action(self.staff_user))
+        self.assertFalse(custom_form.can_take_next_action(self.staff_user))
         self.assertNotIn(self.staff_user, custom_form.next_action_candidates())
-        self.assertTrue(custom_form.can_take_action(self.user))
+        self.assertTrue(custom_form.can_take_next_action(self.user))
         self.assertIn(self.user, custom_form.next_action_candidates())
         action.self_action_allowed = False
         action.save()
-        self.assertFalse(custom_form.can_take_action(self.user))
+        self.assertFalse(custom_form.can_take_next_action(self.user))
         self.assertNotIn(self.user, custom_form.next_action_candidates())
 
     def test_next_custom_form_numbering_role(self):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import KeysView, List, Optional
+from typing import KeysView, List, Optional, Tuple
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CHAR_FIELD_SMALL_LENGTH
 from NEMO.fields import DynamicChoicesCharField, RoleGroupPermissionChoiceField
@@ -16,6 +16,7 @@ from NEMO.utilities import (
     update_media_file_on_model_update,
 )
 from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
+from NEMO.views.notifications import delete_notification
 from NEMO.widgets.dynamic_form import (
     DynamicForm,
     PostUsageGroupQuestion,
@@ -23,8 +24,8 @@ from NEMO.widgets.dynamic_form import (
     validate_dynamic_form_model,
 )
 from django.contrib.auth.models import Group, Permission
-from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
 from django.dispatch import receiver
 from django.template import Context, Template
 from django.template.defaultfilters import yesno
@@ -41,6 +42,7 @@ from NEMO_custom_forms.pdf_utils import (
 from NEMO_custom_forms.utilities import (
     CUSTOM_FORM_CURRENT_NUMBER_PREFIX,
     CUSTOM_FORM_GROUP_PREFIX,
+    CUSTOM_FORM_NOTIFICATION,
     CUSTOM_FORM_TEMPLATE_PREFIX,
     CUSTOM_FORM_USER_PREFIX,
 )
@@ -229,9 +231,10 @@ class CustomFormAutomaticNumbering(BaseModel):
 
 
 class CustomFormAction(BaseModel):
-    class ActionTypes(models.TextChoices):  # Inner Class
-        APPROVAL = "approval", "Approval"
-        NOTIFICATION = "acknowledgment", "Acknowledgment"
+    class ActionTypes(models.TextChoices):
+        APPROVAL = "approval", _("Approval")
+        SET_FORM_NUMBER = "set_form_number", _("Setting form number")
+        NOTIFICATION = "notification", _("Notification")
 
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     action_type = DynamicChoicesCharField(
@@ -239,6 +242,9 @@ class CustomFormAction(BaseModel):
         choices=ActionTypes.choices,
         default=ActionTypes.APPROVAL,
         help_text=_("The action type"),
+    )
+    name = models.CharField(
+        null=True, blank=True, max_length=CHAR_FIELD_SMALL_LENGTH, help_text=_("The optional action name")
     )
     rank = models.PositiveIntegerField(
         help_text=_("The action rank number. Actions will be requested in ascending order")
@@ -271,6 +277,27 @@ class CustomFormAction(BaseModel):
     def get_role_field(cls) -> RoleGroupPermissionChoiceField:
         return cls._meta.get_field("role")
 
+    def action_verb(self):
+        if self.action_type == self.ActionTypes.APPROVAL:
+            return _("Approve")
+        elif self.action_type == self.ActionTypes.SET_FORM_NUMBER:
+            return _("Set form number")
+        elif self.action_type == self.ActionTypes.NOTIFICATION:
+            return _("Acknowledge")
+        return ""
+
+    def action_options(self) -> List[Tuple[str, str]]:
+        if self.action_type == self.ActionTypes.APPROVAL:
+            return [("Approve", "true"), ("Deny", "false")]
+        elif self.action_type == self.ActionTypes.NOTIFICATION:
+            return [("Acknowledge", "true")]
+        elif self.action_type == self.ActionTypes.SET_FORM_NUMBER:
+            return [("Save", "true")]
+        return []
+
+    def pending_status(self):
+        return f"{self.name or self.get_action_type_display().lower()} by {self.get_role_display()}"
+
     def __str__(self):
         return f"{self.template.name} rank: {self.rank} action: {self.get_action_type_display()} role: {self.get_role_display()}"
 
@@ -280,7 +307,7 @@ class CustomFormSpecialMapping(BaseModel):
         FORM_CREATOR = "creator", "Form creator"
         FORM_CREATION_TIME = "creation_time", "Form creation time"
         FORM_NUMBER = "number", "Form number"
-        FORM_ACTION_TAKEN = "action_taken", "Form action (approved/denied/acknowledged) taken"
+        FORM_ACTION_TAKEN = "action_taken", "Form action taken"
         FORM_ACTION_TAKEN_BY = "action_taken_by", "Form action taken by"
         FORM_ACTION_TAKEN_TIME = "action_taken_time", "Form action taken time"
 
@@ -429,12 +456,10 @@ class CustomForm(BaseModel):
         PENDING = 0
         APPROVED = 1
         DENIED = 2
-        FULFILLED = 3
         Choices = (
             (PENDING, "Pending"),
             (APPROVED, "Approved"),
             (DENIED, "Denied"),
-            (FULFILLED, "Fulfilled"),
         )
 
     form_number = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MAXIMUM_LENGTH, unique=True)
@@ -468,12 +493,13 @@ class CustomForm(BaseModel):
         return self.form_number or f"{self.get_status_display()} Form {self.id}"
 
     def next_action(self) -> Optional[CustomFormAction]:
-        for action in self.template.customformaction_set.order_by("rank"):
-            if not CustomFormActionRecord.objects.filter(action=action, custom_form=self).exists():
-                return action
+        if self.template_id:
+            for action in self.template.customformaction_set.order_by("rank"):
+                if not self.get_action_record_for_rank(action.rank):
+                    return action
 
     def get_action_record_for_rank(self, rank: int) -> CustomFormActionRecord:
-        return self.customformactionrecord_set.filter(action__rank=rank).first()
+        return self.customformactionrecord_set.filter(action_rank=rank).first()
 
     def get_filled_pdf_template(self) -> bytes:
         # we are splitting regular field mappings and "signature" mappings
@@ -510,15 +536,20 @@ class CustomForm(BaseModel):
                             data_input[f"{name}{i}"] = input_value
         return data_input
 
-    def process_action(self, user: User, action: CustomFormAction, action_value: bool):
+    def process_action(self, user: User, action: CustomFormAction, action_value: str):
+        # double check user is allowed
+        if action and (not self.can_take_action(user, action) or action != self.next_action()):
+            raise ValidationError(_("You are not allowed to take this action"))
         action_record = CustomFormActionRecord()
+        action_record.action_type = action.action_type
+        action_record.action_rank = action.rank
         action_record.custom_form = self
         action_record.action_taken_by = user
-        action_record.action_result = bool(action_value)
-        action_record.action = action
+        action_record.action_result = action_value == "true" if action_value else None
+        action_record.full_clean()
         action_record.save()
         # Denied, update status
-        if not action_value:
+        if not action_record.action_result:
             self.status = self.FormStatus.DENIED
             self.save(update_fields=["status"])
         # No more actions needed, mark as APPROVED
@@ -526,38 +557,45 @@ class CustomForm(BaseModel):
             self.status = self.FormStatus.APPROVED
             self.save(update_fields=["status"])
 
+    @transaction.atomic
     def cancel(self, user: User, reason: str = None):
         self.cancelled = True
         self.cancelled_by = user
         self.cancellation_time = timezone.now()
         self.cancellation_reason = reason
         self.save()
+        delete_notification(CUSTOM_FORM_NOTIFICATION, self.id)
 
-    def can_take_action(self, user: User) -> bool:
+    def can_take_action(self, user: User, action: CustomFormAction) -> bool:
         if not self.pk:
             return False
         if self.status != CustomForm.FormStatus.PENDING:
             return False
-        action = self.next_action()
         if not action:
             return False
         if user == self.creator and not action.self_action_allowed:
             return False
         return action.get_role_field().has_user_role(action.role, user)
 
-    def can_take_action_and_edit(self, user: User) -> bool:
+    def can_take_next_action(self, user: User) -> bool:
+        return self.can_take_action(user, self.next_action())
+
+    def can_take_next_action_and_edit(self, user: User) -> bool:
         action = self.next_action()
         if not action:
             return False
-        return self.can_take_action(user) and action.can_edit_form
+        return self.can_take_next_action(user) and action.can_edit_form
 
     def can_edit(self, user: User) -> bool:
         if self.cancelled or self.status in [
             CustomForm.FormStatus.DENIED,
-            CustomForm.FormStatus.FULFILLED,
+            CustomForm.FormStatus.APPROVED,
         ]:
             return False
-        return self.status == self.FormStatus.PENDING and self.creator == user or self.can_take_action_and_edit(user)
+        creator_and_no_actions_taken_yet = self.creator == user and not self.customformactionrecord_set.exists()
+        return self.status == self.FormStatus.PENDING and (
+            creator_and_no_actions_taken_yet or self.can_take_next_action_and_edit(user)
+        )
 
     def next_action_candidates(self) -> QuerySetType[User]:
         action = self.next_action()
@@ -567,6 +605,10 @@ class CustomForm(BaseModel):
         if not action.self_action_allowed:
             candidate_list = candidate_list.exclude(id=self.creator_id)
         return candidate_list
+
+    def delete(self, *args, **kwargs):
+        delete_notification(CUSTOM_FORM_NOTIFICATION, self.id)
+        super().delete(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} by {self.creator}"
@@ -596,13 +638,13 @@ class CustomFormDocuments(BaseDocumentModel):
 
 class CustomFormActionRecord(BaseModel):
     custom_form = models.ForeignKey(CustomForm, on_delete=models.CASCADE)
-    action = models.ForeignKey(CustomFormAction, on_delete=models.CASCADE)
     action_type = DynamicChoicesCharField(
         max_length=CHAR_FIELD_SMALL_LENGTH,
         choices=CustomFormAction.ActionTypes.choices,
         default=CustomFormAction.ActionTypes.APPROVAL,
         help_text=_("The action type"),
     )
+    action_rank = models.PositiveIntegerField(help_text=_("The action rank number."))
     action_time = models.DateTimeField(
         auto_now_add=True, help_text=_("The date and time when the action was taken on this form.")
     )
@@ -612,32 +654,24 @@ class CustomFormActionRecord(BaseModel):
         help_text=_("The user who took the action"),
         on_delete=models.CASCADE,
     )
-    action_result = models.BooleanField(default=False, help_text=_("Whether the action was approved/acknowledged"))
+    action_result = models.BooleanField(help_text=_("Whether the action result was positive or negative"))
 
     class Meta:
         ordering = ["-action_time"]
-        unique_together = ("custom_form", "action")
+        unique_together = ("custom_form", "action_type", "action_rank")
 
     def clean(self):
         if self.custom_form_id:
             if self.custom_form.cancelled:
-                raise ValidationError(
-                    {NON_FIELD_ERRORS: _("This form was cancelled and no further actions can be taken on it")}
-                )
+                raise ValidationError(_("This form was cancelled and no further actions can be taken on it"))
             if self.custom_form.status in [
                 CustomForm.FormStatus.APPROVED,
                 CustomForm.FormStatus.DENIED,
-                CustomForm.FormStatus.FULFILLED,
             ]:
-                raise ValidationError(
-                    {NON_FIELD_ERRORS: _(f"This form has already been {self.custom_form.get_status_display().lower()}")}
-                )
-            if self.action_id:
-                # TODO: check this validation
-                if self.custom_form.next_action() != self.action:
-                    raise ValidationError({"action": _("This action/rank has already been taken for this form")})
-            if self.action_taken_by_id:
-                if not self.action.self_action_allowed and self.action_taken_by == self.custom_form.creator:
-                    raise ValidationError({"action_taken_by": _("The creator is not allowed to approve its own form")})
-                if not self.custom_form.can_take_action(self.action_taken_by):
-                    raise ValidationError({"action_taken_by": _("This person is not allowed to approve this form")})
+                raise ValidationError(_(f"This form has already been {self.custom_form.get_status_display().lower()}"))
+            if self.custom_form_id:
+                if (
+                    self.action_type == CustomFormAction.ActionTypes.SET_FORM_NUMBER
+                    and not self.custom_form.form_number
+                ):
+                    raise ValidationError(_("The form number is not set, please set it before continuing"))

@@ -16,7 +16,9 @@ from NEMO.views.notifications import delete_notification
 from NEMO.views.pagination import SortedPaginator
 from NEMO.widgets.dynamic_form import DynamicForm, render_group_questions
 from django import forms
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
@@ -26,6 +28,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from NEMO_custom_forms.customization import CustomFormCustomization
 from NEMO_custom_forms.models import (
     CustomForm,
+    CustomFormAction,
     CustomFormAutomaticNumbering,
     CustomFormDocumentType,
     CustomFormDocuments,
@@ -220,13 +223,13 @@ def export_custom_forms(custom_form_list: QuerySetType[CustomForm]):
 @require_http_methods(["GET", "POST"])
 def create_custom_form(request, custom_form_template_id=None, custom_form_id=None):
     user: User = request.user
-    is_action = [state for state in ["approve_form", "deny_form", "acknowledge_form"] if state in request.POST]
+    action = CustomFormAction.objects.filter(id=request.POST.get("action_id")).first()
 
     try:
         custom_form: Optional[CustomForm] = CustomForm.objects.get(id=custom_form_id)
         form_template = custom_form.template
     except CustomForm.DoesNotExist:
-        if is_action:
+        if action:
             raise
         custom_form = None
         if not can_create_custom_forms(user):
@@ -241,13 +244,13 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
         except CustomFormPDFTemplate.DoesNotExist:
             return render(request, "NEMO_custom_forms/choose_template.html", {"form_templates": templates})
 
-    # Return to custom forms if trying to approve but not allowed
-    action = custom_form.next_action() if custom_form else None
-    if is_action and action and not custom_form.can_take_action(user):
-        return redirect("landing")
+    # Return to custom forms if trying to take action but not allowed
+    if action and (not custom_form.can_take_action(user, action) or action != custom_form.next_action()):
+        messages.error(request, "You are not allowed to take this action on this form.")
+        redirect("custom_forms", custom_form_template_id=custom_form.template_id)
 
     edit = bool(custom_form)
-    action_only = custom_form and custom_form.can_take_action(user) and not custom_form.can_edit(user)
+    action_only = action and custom_form and custom_form.can_take_next_action(user) and not custom_form.can_edit(user)
     readonly = edit and not custom_form.can_edit(user)
 
     form = CustomFormForm(request.POST or None, instance=custom_form, template=form_template)
@@ -257,7 +260,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
         form.cleaned_data = getattr(form, "cleaned_data", {})
         if custom_form.cancelled:
             form.add_error(None, "You are not allowed to edit cancelled forms.")
-        elif custom_form.status in [CustomForm.FormStatus.DENIED, CustomForm.FormStatus.FULFILLED]:
+        elif custom_form.status in [CustomForm.FormStatus.DENIED, CustomForm.FormStatus.APPROVED]:
             form.add_error(None, f"You are not allowed to edit {custom_form.get_status_display().lower()} forms.")
         else:
             form.add_error(None, "You are not allowed to edit this form.")
@@ -267,7 +270,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
             form_template.form_fields, custom_form.template_data if edit else None
         ).render("custom_form_fields_group", form_template.id),
         "selected_template": form_template,
-        "action": action,
+        "action": custom_form.next_action() if custom_form and custom_form.can_take_next_action(user) else None,
         "document_types": CustomFormDocumentType.objects.filter(
             Q(form_template=form_template) | Q(form_template__isnull=True)
         ),
@@ -280,59 +283,65 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
     }
 
     if request.method == "POST":
-        if not readonly:
-            try:
-                form.instance.template_data = DynamicForm(form_template.form_fields).extract(request)
-            except RequiredUnansweredQuestionsException as e:
-                form.add_error(field=None, error=e.msg)
-        if form.is_valid():
-            if not edit and not form.instance.creator_id:
-                form.instance.creator = user
+        try:
+            if not readonly:
+                try:
+                    form.instance.template_data = DynamicForm(form_template.form_fields).extract(request)
+                except RequiredUnansweredQuestionsException as e:
+                    form.add_error(field=None, error=e.msg)
+            if form.is_valid():
+                if not edit and not form.instance.creator_id:
+                    form.instance.creator = user
 
-            if not action_only:
-                form.instance.last_updated_by = user
-            form.instance.template = form_template
+                if not action_only:
+                    form.instance.last_updated_by = user
+                form.instance.template = form_template
 
-            with transaction.atomic():
-                # all this need to happen at the same time or be rolled back
-                # auto-generate form number, form saving, and actions
+                with transaction.atomic():
+                    # all this need to happen at the same time or be rolled back
+                    # auto-generate form number, form saving, and actions
 
-                automatic_numbering: CustomFormAutomaticNumbering = getattr(
-                    form_template, "customformautomaticnumbering", None
-                )
-                auto_generate_parameter = request.POST.get("auto_generate", "false") == "true"
-                if (not custom_form or not custom_form.form_number) and automatic_numbering and auto_generate_parameter:
-                    if automatic_numbering.role and not automatic_numbering.get_role_field().has_user_role(
-                        automatic_numbering.role, user
+                    automatic_numbering: CustomFormAutomaticNumbering = getattr(
+                        form_template, "customformautomaticnumbering", None
+                    )
+                    auto_generate_parameter = request.POST.get("auto_generate", "false") == "true"
+                    if (
+                        (not custom_form or not custom_form.form_number)
+                        and automatic_numbering
+                        and auto_generate_parameter
                     ):
-                        return HttpResponseForbidden(
-                            "You are not allowed to generate a form number for this form template."
-                        )
-                    form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
+                        if automatic_numbering.role and not automatic_numbering.get_role_field().has_user_role(
+                            automatic_numbering.role, user
+                        ):
+                            return HttpResponseForbidden(
+                                "You are not allowed to generate a form number for this form template."
+                            )
+                        form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
 
-                if not is_action or action and action.can_edit_form:
-                    custom_form = form.save()
+                    if not action or action.can_edit_form:
+                        custom_form = form.save()
 
-                    # Handle file uploads
-                    document_type_id = request.POST.get("document_type_id", None) or None
-                    document_type = CustomFormDocumentType.objects.filter(id=document_type_id).first()
-                    for f in request.FILES.getlist("form_documents"):
-                        CustomFormDocuments.objects.create(
-                            document=f, custom_form=custom_form, document_type=document_type
-                        )
-                    CustomFormDocuments.objects.filter(id__in=request.POST.getlist("remove_documents")).delete()
+                        # Handle file uploads
+                        document_type_id = request.POST.get("document_type_id", None) or None
+                        document_type = CustomFormDocumentType.objects.filter(id=document_type_id).first()
+                        for f in request.FILES.getlist("form_documents"):
+                            CustomFormDocuments.objects.create(
+                                document=f, custom_form=custom_form, document_type=document_type
+                            )
+                        CustomFormDocuments.objects.filter(id__in=request.POST.getlist("remove_documents")).delete()
 
-                    # TODO: send_custom_form_received_email(request, custom_form, edit)
-                if is_action:
-                    delete_notification(CUSTOM_FORM_NOTIFICATION, custom_form.id)
-                    custom_form.process_action(user, action, is_action == ["approve_form"])
-                create_custom_form_notification(custom_form)
-            return redirect("custom_forms", custom_form_template_id=custom_form.template_id)
-        else:
-            if request.FILES.getlist("form_documents") or request.POST.get("remove_documents"):
-                form.add_error(field=None, error="Custom form document changes were lost, please resubmit them.")
+                        # TODO: send_custom_form_received_email(request, custom_form, edit)
+                    if action:
+                        delete_notification(CUSTOM_FORM_NOTIFICATION, custom_form.id)
+                        custom_form.process_action(user, action, request.POST.get("action_result"))
+                    create_custom_form_notification(custom_form)
+                return redirect("custom_forms", custom_form_template_id=custom_form.template_id)
+            else:
+                if request.FILES.getlist("form_documents") or request.POST.get("remove_documents"):
+                    raise ValidationError("Custom form document changes were lost, please resubmit them.")
+        except ValidationError as e:
+            form.add_error(field=None, error=e)
 
-    # If GET request or form is not valid
     dictionary["form"] = form
     return render(request, "NEMO_custom_forms/custom_form.html", dictionary)
 
@@ -392,5 +401,5 @@ def form_fields_group(request, form_id, group_name):
 
 # TODO: maybe allow multiple permissions/groups
 # TODO: make it optional to have a PDF form (generate it from the form itself)
-# TODO: add all pdf fields for credit card order and test mapping
-# TODO: check validation for custom forms action records
+# TODO: set permissions on pdf template on who can see and submit one (instead of customizations)
+# TODO: check what happens/should happen when form not approved

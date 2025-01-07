@@ -15,8 +15,8 @@ def can_generate_custom_form_number(form_template: CustomFormPDFTemplate, user: 
 
 
 @register.filter
-def can_take_action_for_custom_form(custom_form: CustomForm, user: User):
-    return custom_form.can_take_action(user)
+def can_take_next_action_for_custom_form(custom_form: CustomForm, user: User):
+    return custom_form.can_take_next_action(user)
 
 
 @register.filter

@@ -75,7 +75,9 @@ class CustomFormSpecialMappingFormset(forms.BaseInlineFormSet):
 
     def add_fields(self, form, index):
         super().add_fields(form, index)
-        form.fields["field_value_action"].queryset = CustomFormAction.objects.filter(template=self.instance)
+        form.fields["field_value_action"].queryset = CustomFormAction.objects.filter(
+            template=self.instance
+        ).prefetch_related("template")
 
 
 class CustomFormActionAdminInline(admin.TabularInline):
@@ -147,18 +149,8 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
         return ""
 
 
-class CustomFormActionRecordFormset(forms.BaseInlineFormSet):
-    model = CustomFormActionRecord
-
-    def add_fields(self, form, index):
-        super().add_fields(form, index)
-        if hasattr(self.instance, "template"):
-            form.fields["action"].queryset = CustomFormAction.objects.filter(template=self.instance.template)
-
-
 class CustomFormActionRecordInline(admin.TabularInline):
     model = CustomFormActionRecord
-    formset = CustomFormActionRecordFormset
 
 
 class CustomFormDocumentsInline(admin.TabularInline):
@@ -182,6 +174,11 @@ class CustomFormAdmin(admin.ModelAdmin):
         "cancelled",
     ]
     date_hierarchy = "last_updated"
+
+    def delete_queryset(self, request, queryset):
+        # This is needed so that the notifications for these forms are also deleted
+        for obj in queryset:
+            obj.delete()
 
 
 class CustomFormAutomaticNumberingForm(forms.ModelForm):

@@ -34,8 +34,8 @@
         </thead>
         <tbody>
             {% for custom_form in page %}
-                {% with status_denied=2 status_fulfilled=3 status_approved=1 %}
-                    <tr class="{% if custom_form.status == status_denied %}danger{% elif custom_form.status == status_fulfilled %}primary{% elif custom_form.status == status_approved %}success{% else %}default{% endif %}">
+                {% with status_denied=2 status_approved=1 %}
+                    <tr class="{% if custom_form.status == status_denied %}danger{% elif custom_form.status == status_approved %}success{% else %}default{% endif %}">
                         {% for column in template_columns.values %}
                             {% if column.0 == "form_number" %}
                                 <td>{{ custom_form.form_number|default_if_none:"" }}</td>
@@ -44,7 +44,7 @@
                             {% elif column.0 == "creator" %}
                                 <td>{{ custom_form.creator }}</td>
                             {% elif column.0 == "status" %}
-                                <td>{{ custom_form.get_status_display }}</td>
+                                <td>{{ custom_form.get_status_display }} {{ custom_form.next_action.pending_status }}</td>
                             {% else %}
                                 <td>{{ custom_form.get_template_data_input|get_item:column.0|default_if_none:"" }}</td>
                             {% endif %}
@@ -68,16 +68,16 @@
                                 </form>
                             {% endif %}
                             {% url "edit_custom_form" custom_form.id as edit_custom_form_url %}
-                            {% if custom_form|can_edit_custom_form:user and not custom_form|can_take_action_for_custom_form:user %}
+                            {% if custom_form|can_edit_custom_form:user and not custom_form|can_take_next_action_for_custom_form:user %}
                                 {% button size="small" type="edit" value="Edit" url=edit_custom_form_url %}
                             {% elif user_can_add %}
                                 {% button size="small" type="view" value="View" url=edit_custom_form_url %}
                             {% endif %}
                             {% if custom_form.next_action %}
-                                {% if custom_form|can_take_action_for_custom_form:user %}
+                                {% if custom_form|can_take_next_action_for_custom_form:user %}
                                     {% if custom_form.next_action.self_action_allowed or user != custom_form.creator %}
                                         {% url 'custom_form_action' custom_form.id as custom_form_action_url %}
-                                        {% button size="small" type="info" value="Approve" url=custom_form_action_url %}
+                                        {% button size="small" type="info" value=custom_form.next_action.action_verb url=custom_form_action_url %}
                                     {% endif %}
                                 {% endif %}
                             {% endif %}
