@@ -77,21 +77,33 @@ class CustomFormSpecialMappingFormset(forms.BaseInlineFormSet):
         super().add_fields(form, index)
         form.fields["field_value_action"].queryset = CustomFormAction.objects.filter(
             template=self.instance
-        ).prefetch_related("template")
+        ).select_related("template")
 
 
 class CustomFormActionAdminInline(admin.TabularInline):
     model = CustomFormAction
     formset = CustomFormActionFormset
 
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request).select_related("template")
+        return queryset
+
 
 class CustomFormSpecialMappingAdminInline(admin.TabularInline):
     model = CustomFormSpecialMapping
     formset = CustomFormSpecialMappingFormset
 
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request).select_related("template", "field_value_action")
+        return queryset
+
 
 class CustomFormDisplayColumnInline(admin.TabularInline):
     model = CustomFormDisplayColumn
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request).select_related("template")
+        return queryset
 
 
 class CustomFormPDFTemplateForm(forms.ModelForm):
