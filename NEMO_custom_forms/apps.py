@@ -4,6 +4,7 @@ from django.apps import AppConfig
 class CustomFormsConfig(AppConfig):
     name = "NEMO_custom_forms"
     verbose_name = "Custom Forms"
+    default_auto_field = "django.db.models.AutoField"
 
     def ready(self):
         from NEMO.plugins.utils import add_dynamic_notification_types

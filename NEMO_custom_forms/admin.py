@@ -124,7 +124,7 @@ class CustomFormPDFTemplateForm(forms.ModelForm):
 @admin.register(CustomFormPDFTemplate)
 class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     form = CustomFormPDFTemplateForm
-    list_display = ["name", "enabled", "form"]
+    list_display = ["name", "enabled", "form", "get_create_permissions", "get_view_all_permissions"]
     list_filter = ["enabled"]
     readonly_fields = ["_pdf_form_fields", "_form_fields_preview"]
     inlines = [CustomFormActionAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
@@ -159,6 +159,23 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
                 )
             )
         return ""
+
+    @admin.display(description="View all permissions", ordering="view_all_permissions")
+    def get_view_all_permissions(self, obj: CustomFormPDFTemplate):
+        return mark_safe(
+            "<br>".join(
+                str(obj.get_view_all_permissions_field().role_display(role_str))
+                for role_str in obj.view_all_permissions
+            )
+        )
+
+    @admin.display(description="Create permissions", ordering="create_permissions")
+    def get_create_permissions(self, obj: CustomFormPDFTemplate):
+        return mark_safe(
+            "<br>".join(
+                str(obj.get_create_permissions_field().role_display(role_str)) for role_str in obj.create_permissions
+            )
+        )
 
 
 class CustomFormActionRecordInline(admin.TabularInline):

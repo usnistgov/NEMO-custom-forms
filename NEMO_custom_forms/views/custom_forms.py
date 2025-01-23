@@ -9,6 +9,7 @@ from NEMO.utilities import (
     BasicDisplayTable,
     export_format_datetime,
     format_datetime,
+    get_full_url,
     get_model_instance,
     slugify_underscore,
 )
@@ -23,9 +24,9 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
-from NEMO_custom_forms.customization import CustomFormCustomization
 from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormAction,
@@ -39,36 +40,28 @@ from NEMO_custom_forms.pdf_utils import merge_documents
 from NEMO_custom_forms.utilities import CUSTOM_FORM_NOTIFICATION, default_dict_to_regular_dict
 
 
-def can_view_custom_forms(user) -> bool:
-    staff = CustomFormCustomization.get_bool("custom_forms_view_staff")
-    user_office = CustomFormCustomization.get_bool("custom_forms_view_user_office")
-    accounting = CustomFormCustomization.get_bool("custom_forms_view_accounting_officer")
-    return user.is_active and (
-        staff
-        and user.is_staff
-        or user_office
-        and user.is_user_office
-        or accounting
-        and user.is_accounting_officer
-        or user.is_facility_manager
-        or user.is_superuser
-    )
+def available_templates_for_user_to_see(user) -> List[CustomFormPDFTemplate]:
+    available_templates = []
+    for available_template in CustomFormPDFTemplate.objects.filter(enabled=True):
+        if (
+            available_template.can_user_create(user)
+            or available_template.can_user_view_all(user)
+            or available_template.can_user_approve(user)
+        ):
+            available_templates.append(available_template)
+    return available_templates
 
 
-def can_create_custom_forms(user: User) -> bool:
-    staff = CustomFormCustomization.get_bool("custom_forms_create_staff")
-    user_office = CustomFormCustomization.get_bool("custom_forms_create_user_office")
-    accounting = CustomFormCustomization.get_bool("custom_forms_create_accounting_officer")
-    return user.is_active and (
-        staff
-        and user.is_staff
-        or user_office
-        and user.is_user_office
-        or accounting
-        and user.is_accounting_officer
-        or user.is_facility_manager
-        or user.is_superuser
-    )
+def available_templates_for_user_to_add(user) -> List[CustomFormPDFTemplate]:
+    return [
+        available_template
+        for available_template in CustomFormPDFTemplate.objects.filter(enabled=True)
+        if available_template.can_user_create(user)
+    ]
+
+
+def can_view_any_custom_forms(user) -> bool:
+    return bool(available_templates_for_user_to_see(user))
 
 
 class CustomFormForm(forms.ModelForm):
@@ -102,22 +95,30 @@ class CustomFormForm(forms.ModelForm):
 
 
 @login_required
-@user_passes_test(can_view_custom_forms)
+@user_passes_test(can_view_any_custom_forms)
 @require_GET
 def custom_forms(request, custom_form_template_id=None):
+    user: User = request.user
     selected_template = CustomFormPDFTemplate.objects.filter(id=custom_form_template_id).first()
     if not selected_template:
-        selected_template = CustomFormPDFTemplate.objects.filter(enabled=True).first()
+        # Select the first template that the user can create instances for
+        can_create_templates = available_templates_for_user_to_add(user)
+        selected_template = can_create_templates[0] if can_create_templates else None
         if selected_template:
             return redirect("custom_forms", custom_form_template_id=selected_template.id)
         else:
             return redirect("custom_form_templates")
     else:
         custom_form_list = CustomForm.objects.filter(cancelled=False).filter(template=selected_template)
+
+    if not selected_template.can_user_view_all(user) and not selected_template.can_user_approve(user):
+        # Restrict the list to the ones users have created
+        custom_form_list = custom_form_list.filter(creator=user)
+
     page = SortedPaginator(custom_form_list, request, order_by="-last_updated").get_current_page()
 
     if bool(request.GET.get("csv", False)):
-        return export_custom_forms(custom_form_list.order_by("-last_updated"))
+        return export_custom_forms(custom_form_list.order_by("-last_updated"), request)
 
     default_columns = [
         ("form_number", "Form number"),
@@ -128,7 +129,7 @@ def custom_forms(request, custom_form_template_id=None):
 
     dictionary = {
         "page": page,
-        "user_can_add": can_create_custom_forms(request.user),
+        "user_can_add": selected_template.can_user_create(user),
         "template_columns": get_ordered_columns(selected_template, default_columns),
         "default_columns": default_columns,
         **get_dictionary_for_base(request, selected_template),
@@ -184,12 +185,12 @@ def get_dictionary_for_base(request, template: CustomFormPDFTemplate = None) -> 
     return {
         "title": f"{template.name} forms" if template else "Template list",
         "selected_template": template,
-        "form_templates": CustomFormPDFTemplate.objects.filter(enabled=True),
+        "form_templates": available_templates_for_user_to_see(request.user),
         "custom_form_notifications": default_dict_to_regular_dict(custom_form_notifications),
     }
 
 
-def export_custom_forms(custom_form_list: QuerySetType[CustomForm]):
+def export_custom_forms(custom_form_list: QuerySetType[CustomForm], request):
     table = BasicDisplayTable()
     table.add_header(("form_number", "Form number")),
     table.add_header(("created_date", "Created date")),
@@ -210,7 +211,7 @@ def export_custom_forms(custom_form_list: QuerySetType[CustomForm]):
             "cancelled_by": custom_form.cancelled_by,
             "cancellation_reason": custom_form.cancellation_reason,
             "notes": custom_form.notes or "",
-            "documents": "\n".join([doc.full_link() for doc in custom_form.customformdocuments_set.all()]),
+            "documents": get_full_url(reverse("render_custom_form_pdf", args=[custom_form.pk]), request),
         }
         table.add_row(row)
     filename = f"custom_forms_{export_format_datetime()}.csv"
@@ -231,18 +232,19 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
     except CustomForm.DoesNotExist:
         if action:
             raise
+        templates: List[CustomFormPDFTemplate] = available_templates_for_user_to_add(user)
         custom_form = None
-        if not can_create_custom_forms(user):
-            return redirect("landing")
-        # only check for template if it's a new form
-        templates: QuerySetType[CustomFormPDFTemplate] = CustomFormPDFTemplate.objects.all()
         try:
-            if templates.count() == 1:
-                form_template = templates.first()
+            if len(templates) == 1:
+                form_template = templates[0]
             else:
                 form_template = CustomFormPDFTemplate.objects.get(id=custom_form_template_id)
         except CustomFormPDFTemplate.DoesNotExist:
             return render(request, "NEMO_custom_forms/choose_template.html", {"form_templates": templates})
+
+    # Check template permission
+    if form_template not in available_templates_for_user_to_see(user):
+        return redirect("landing")
 
     # Return to custom forms if trying to take action but not allowed
     if action and (not custom_form.can_take_action(user, action) or action != custom_form.next_action()):
@@ -375,7 +377,11 @@ def delete_custom_form(request, custom_form_id):
 def render_custom_form_pdf(request, custom_form_id):
     user: User = request.user
     custom_form = get_object_or_404(CustomForm, pk=custom_form_id)
-    if not can_view_custom_forms(user) and not custom_form.can_edit(user) and not can_create_custom_forms(user):
+    if (
+        not custom_form.template.can_user_view_all(user)
+        and not custom_form.template.can_user_approve(user)
+        and not custom_form.creator == user
+    ):
         return redirect("landing")
 
     merged_pdf_bytes = merge_documents(
@@ -401,5 +407,6 @@ def form_fields_group(request, form_id, group_name):
 
 # TODO: maybe allow multiple permissions/groups
 # TODO: make it optional to have a PDF form (generate it from the form itself)
-# TODO: set permissions on pdf template on who can see and submit one (instead of customizations)
 # TODO: check what happens/should happen when form not approved
+# TODO: add signature + date as option for special mapping
+# TODO: categories in dropdown dynamic

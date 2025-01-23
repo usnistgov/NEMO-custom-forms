@@ -6,7 +6,7 @@ import re
 from typing import KeysView, List, Optional, Tuple
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CHAR_FIELD_SMALL_LENGTH
-from NEMO.fields import DynamicChoicesCharField, RoleGroupPermissionChoiceField
+from NEMO.fields import DynamicChoicesCharField, MultiRoleGroupPermissionChoiceField, RoleGroupPermissionChoiceField
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
 from NEMO.typing import QuerySetType
 from NEMO.utilities import (
@@ -54,6 +54,16 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     enabled = models.BooleanField(default=True)
     name = models.CharField(
         max_length=CHAR_FIELD_MEDIUM_LENGTH, unique=True, help_text=_("The unique name for this form template")
+    )
+    create_permissions = MultiRoleGroupPermissionChoiceField(
+        groups=True,
+        help_text=_("The roles/groups required for users to submit this type of custom form"),
+    )
+    view_all_permissions = MultiRoleGroupPermissionChoiceField(
+        groups=True,
+        help_text=_(
+            "The roles/groups required for users to view all custom forms of this type. Users can always see custom forms they have submitted"
+        ),
     )
     form = models.FileField(
         upload_to=document_filename_upload, validators=[validate_pdf_form], help_text=_("The pdf form")
@@ -123,6 +133,25 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     def __str__(self):
         return self.name
 
+    @classmethod
+    def get_view_all_permissions_field(cls) -> MultiRoleGroupPermissionChoiceField:
+        return cls._meta.get_field("view_all_permissions")
+
+    @classmethod
+    def get_create_permissions_field(cls) -> MultiRoleGroupPermissionChoiceField:
+        return cls._meta.get_field("create_permissions")
+
+    def can_user_view_all(self, user) -> bool:
+        return self.get_view_all_permissions_field().has_user_roles(self.view_all_permissions, user)
+
+    def can_user_create(self, user) -> bool:
+        return self.get_create_permissions_field().has_user_roles(self.create_permissions, user)
+
+    def can_user_approve(self, user) -> bool:
+        return any(
+            action.get_role_field().has_user_role(action.role, user) for action in self.customformaction_set.all()
+        )
+
     class Meta:
         ordering = ["name"]
 
@@ -173,7 +202,6 @@ class CustomFormAutomaticNumbering(BaseModel):
         groups=True,
         empty_label="Automatic upon creation",
         verbose_name="Role/Group",
-        max_length=CHAR_FIELD_MEDIUM_LENGTH,
         help_text=_(
             "The role/group required for users to automatically generate the form number. Leave blank to generate it upon creation without user action."
         ),
@@ -253,7 +281,6 @@ class CustomFormAction(BaseModel):
         roles=True,
         groups=True,
         verbose_name="Role/Group",
-        max_length=CHAR_FIELD_MEDIUM_LENGTH,
         help_text=_("The role/group required for users to take the action"),
     )
     self_action_allowed = models.BooleanField(
@@ -452,15 +479,10 @@ class CustomFormDisplayColumn(BaseModel):
 
 
 class CustomForm(BaseModel):
-    class FormStatus(object):
-        PENDING = 0
-        APPROVED = 1
-        DENIED = 2
-        Choices = (
-            (PENDING, "Pending"),
-            (APPROVED, "Approved"),
-            (DENIED, "Denied"),
-        )
+    class FormStatus(models.IntegerChoices):
+        PENDING = 0, _("Pending")
+        APPROVED = 1, _("Approved")
+        DENIED = 2, _("Denied")
 
     form_number = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MAXIMUM_LENGTH, unique=True)
     creation_time = models.DateTimeField(auto_now_add=True, help_text=_("The date and time when the form was created."))
@@ -474,7 +496,7 @@ class CustomForm(BaseModel):
         help_text=_("The last user who modified this form."),
         on_delete=models.SET_NULL,
     )
-    status = models.IntegerField(choices=FormStatus.Choices, default=FormStatus.PENDING)
+    status = models.IntegerField(choices=FormStatus.choices, default=FormStatus.PENDING)
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     template_data = models.TextField(null=True, blank=True)
     notes = models.TextField(null=True, blank=True)

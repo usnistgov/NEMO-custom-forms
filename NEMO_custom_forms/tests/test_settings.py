@@ -33,8 +33,6 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.humanize",
     "NEMO_custom_forms",
-    "NEMO.apps.kiosk",
-    "NEMO.apps.area_access",
     "NEMO",
     "rest_framework",
     "django_filters",
