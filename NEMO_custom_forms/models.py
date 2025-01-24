@@ -335,14 +335,20 @@ class CustomFormAction(BaseModel):
 
 class CustomFormSpecialMapping(BaseModel):
     class FieldValue(models.TextChoices):  # Inner Class
-        FORM_CREATOR = "creator", "Form creator"
-        FORM_CREATION_TIME = "creation_time", "Form creation time"
-        FORM_NUMBER = "number", "Form number"
-        FORM_ACTION_TAKEN = "action_taken", "Form action taken"
-        FORM_ACTION_TAKEN_BY = "action_taken_by", "Form action taken by"
-        FORM_ACTION_TAKEN_TIME = "action_taken_time", "Form action taken time"
+        FORM_CREATOR = "creator", _("Form creator")
+        FORM_CREATION_TIME = "creation_time", _("Form creation time")
+        FORM_NUMBER = "number", _("Form number")
+        FORM_ACTION_TAKEN = "action_taken", _("Form action taken")
+        FORM_ACTION_TAKEN_BY = "action_taken_by", _("Form action taken by")
+        FORM_ACTION_TAKEN_TIME = "action_taken_time", _("Form action taken time")
+        FORM_ACTION_TAKEN_BY_AND_TIME = "action_taken_by_time", _("Form action taken by + time")
 
-    action_values = [FieldValue.FORM_ACTION_TAKEN, FieldValue.FORM_ACTION_TAKEN_BY, FieldValue.FORM_ACTION_TAKEN_TIME]
+    action_values = [
+        FieldValue.FORM_ACTION_TAKEN,
+        FieldValue.FORM_ACTION_TAKEN_BY,
+        FieldValue.FORM_ACTION_TAKEN_TIME,
+        FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME,
+    ]
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     field_name = models.CharField(
         max_length=CHAR_FIELD_MAXIMUM_LENGTH, help_text=_("The pdf template field name to map this value to")
@@ -434,6 +440,8 @@ class CustomFormSpecialMapping(BaseModel):
                     return action.action_taken_by.get_name()
                 elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_TIME:
                     return format_datetime(action.action_time, "SHORT_DATE_FORMAT")
+                elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME:
+                    return f"{action.action_taken_by.get_name()}     {format_datetime(action.action_time, 'SHORT_DATE_FORMAT')}"
         return ""
 
     def __str__(self):
@@ -550,7 +558,10 @@ class CustomForm(BaseModel):
             mapping_value = special_mapping.get_value(self)
             if mapping_value is None:
                 mapping_value = ""
-            if special_mapping.field_value == CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY:
+            if special_mapping.field_value in [
+                CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY,
+                CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME,
+            ]:
                 signature_mappings[special_mapping.field_name] = mapping_value
             else:
                 field_mappings[special_mapping.field_name] = mapping_value

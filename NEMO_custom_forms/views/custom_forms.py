@@ -407,6 +407,6 @@ def form_fields_group(request, form_id, group_name):
 
 # TODO: make it optional to have a PDF form (generate it from the form itself)
 # TODO: check what happens/should happen when form not approved
-# TODO: add signature + date as option for special mapping
 # TODO: categories in dropdown dynamic
 # TODO: add watermark pending to PDFs
+# TODO: add filters in custom form page
