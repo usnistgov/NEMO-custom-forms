@@ -215,8 +215,8 @@ class CustomFormAutomaticNumbering(BaseModel):
     def generate_automatically(self) -> bool:
         return not self.role
 
-    def get_role_display(self):
-        return self.get_role_field().role_display(self.role)
+    def get_role_display(self, admin_display=False) -> str:
+        return self.get_role_field().role_display(self.role, admin_display=admin_display)
 
     def can_generate_custom_form_number(self, user):
         return self.get_role_field().has_user_role(self.role, user)
@@ -297,8 +297,8 @@ class CustomFormAction(BaseModel):
         ordering = ["template", "rank"]
         unique_together = ["template", "rank"]
 
-    def get_role_display(self):
-        return self.get_role_field().role_display(self.role)
+    def get_role_display(self, admin_display=False) -> str:
+        return self.get_role_field().role_display(self.role, admin_display=admin_display)
 
     @classmethod
     def get_role_field(cls) -> RoleGroupPermissionChoiceField:
@@ -324,6 +324,10 @@ class CustomFormAction(BaseModel):
 
     def pending_status(self):
         return f"{self.name or self.get_action_type_display().lower()} by {self.get_role_display()}"
+
+    @property
+    def label(self):
+        return f"{self.name or self.get_action_type_display()}"
 
     def __str__(self):
         return f"{self.template.name} rank: {self.rank} action: {self.get_action_type_display()} role: {self.get_role_display()}"
@@ -483,6 +487,11 @@ class CustomForm(BaseModel):
         PENDING = 0, _("Pending")
         APPROVED = 1, _("Approved")
         DENIED = 2, _("Denied")
+        CLOSED = 3, _("Closed")
+
+        @classmethod
+        def finished(cls):
+            return [cls.DENIED, cls.CLOSED]
 
     form_number = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MAXIMUM_LENGTH, unique=True)
     creation_time = models.DateTimeField(auto_now_add=True, help_text=_("The date and time when the form was created."))
@@ -519,6 +528,15 @@ class CustomForm(BaseModel):
             for action in self.template.customformaction_set.order_by("rank"):
                 if not self.get_action_record_for_rank(action.rank):
                     return action
+
+    def has_more_approval_actions(self) -> bool:
+        approval_actions = self.template.customformaction_set.filter(
+            action_type=CustomFormAction.ActionTypes.APPROVAL
+        ).count()
+        approval_action_recorded = self.customformactionrecord_set.filter(
+            action_type=CustomFormAction.ActionTypes.APPROVAL
+        ).count()
+        return approval_actions > approval_action_recorded
 
     def get_action_record_for_rank(self, rank: int) -> CustomFormActionRecord:
         return self.customformactionrecord_set.filter(action_rank=rank).first()
@@ -574,10 +592,15 @@ class CustomForm(BaseModel):
         if not action_record.action_result:
             self.status = self.FormStatus.DENIED
             self.save(update_fields=["status"])
-        # No more actions needed, mark as APPROVED
-        if action_value and not self.next_action():
-            self.status = self.FormStatus.APPROVED
-            self.save(update_fields=["status"])
+        if action_value:
+            # No more actions needed, mark as CLOSED
+            if not self.next_action():
+                self.status = self.FormStatus.CLOSED
+                self.save(update_fields=["status"])
+            # No more approval actions available, mark as APPROVED
+            elif not self.has_more_approval_actions():
+                self.status = self.FormStatus.APPROVED
+                self.save(update_fields=["status"])
 
     @transaction.atomic
     def cancel(self, user: User, reason: str = None):
@@ -591,7 +614,7 @@ class CustomForm(BaseModel):
     def can_take_action(self, user: User, action: CustomFormAction) -> bool:
         if not self.pk:
             return False
-        if self.status != CustomForm.FormStatus.PENDING:
+        if self.status in CustomForm.FormStatus.finished():
             return False
         if not action:
             return False
@@ -609,15 +632,10 @@ class CustomForm(BaseModel):
         return self.can_take_next_action(user) and action.can_edit_form
 
     def can_edit(self, user: User) -> bool:
-        if self.cancelled or self.status in [
-            CustomForm.FormStatus.DENIED,
-            CustomForm.FormStatus.APPROVED,
-        ]:
+        if self.cancelled or self.status in self.FormStatus.finished():
             return False
         creator_and_no_actions_taken_yet = self.creator == user and not self.customformactionrecord_set.exists()
-        return self.status == self.FormStatus.PENDING and (
-            creator_and_no_actions_taken_yet or self.can_take_next_action_and_edit(user)
-        )
+        return creator_and_no_actions_taken_yet or self.can_take_next_action_and_edit(user)
 
     def next_action_candidates(self) -> QuerySetType[User]:
         action = self.next_action()
@@ -631,6 +649,23 @@ class CustomForm(BaseModel):
     def delete(self, *args, **kwargs):
         delete_notification(CUSTOM_FORM_NOTIFICATION, self.id)
         super().delete(*args, **kwargs)
+
+    def html_progress_bar(self):
+        result = '<div class="progress" style="margin-bottom: 0;">'
+        if self.status in self.FormStatus.finished():
+            color = "success" if self.status == self.FormStatus.CLOSED else "danger"
+            result += f'<div class="progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="1" aria-valuemin="0" aria-valuemax="1" style="width: 100%;">{self.get_status_display()}</div>'
+        else:
+            number_of_actions = self.template.customformaction_set.count()
+            number_of_actions_recorded = self.customformactionrecord_set.count()
+            next_action = self.next_action()
+            for index, template_action in enumerate(self.template.customformaction_set.order_by("rank")):
+                color = "info progress-bar-striped" if index < number_of_actions_recorded else "default"
+                if template_action == next_action:
+                    color = "warning progress-bar-striped active"
+                result += f'<div class="progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="{index+1}" aria-valuemin="0" aria-valuemax="{number_of_actions}" style="white-space: nowrap;text-overflow: ellipsis;overflow: hidden;padding: 0 5px;width: {round(100/number_of_actions)}%;" title="{template_action.pending_status()}">{template_action.label}</div>'
+        result += "</div>"
+        return mark_safe(result)
 
     def __str__(self):
         return f"{self.name} by {self.creator}"
@@ -686,10 +721,7 @@ class CustomFormActionRecord(BaseModel):
         if self.custom_form_id:
             if self.custom_form.cancelled:
                 raise ValidationError(_("This form was cancelled and no further actions can be taken on it"))
-            if self.custom_form.status in [
-                CustomForm.FormStatus.APPROVED,
-                CustomForm.FormStatus.DENIED,
-            ]:
+            if self.custom_form.status in CustomForm.FormStatus.finished():
                 raise ValidationError(_(f"This form has already been {self.custom_form.get_status_display().lower()}"))
             if self.custom_form_id:
                 if (

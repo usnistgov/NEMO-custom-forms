@@ -164,7 +164,7 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     def get_view_all_permissions(self, obj: CustomFormPDFTemplate):
         return mark_safe(
             "<br>".join(
-                str(obj.get_view_all_permissions_field().role_display(role_str))
+                str(obj.get_view_all_permissions_field().role_display(role_str, admin_display=True))
                 for role_str in obj.view_all_permissions
             )
         )
@@ -173,7 +173,8 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     def get_create_permissions(self, obj: CustomFormPDFTemplate):
         return mark_safe(
             "<br>".join(
-                str(obj.get_create_permissions_field().role_display(role_str)) for role_str in obj.create_permissions
+                str(obj.get_create_permissions_field().role_display(role_str, admin_display=True))
+                for role_str in obj.create_permissions
             )
         )
 
@@ -200,6 +201,7 @@ class CustomFormAdmin(admin.ModelAdmin):
     list_filter = [
         ("creator", admin.RelatedOnlyFieldListFilter),
         ("template", admin.RelatedOnlyFieldListFilter),
+        "status",
         "cancelled",
     ]
     date_hierarchy = "last_updated"
@@ -229,7 +231,7 @@ class CustomFormAutomaticNumberingAdmin(admin.ModelAdmin):
 
     @admin.display(description="Allowed role/group", ordering="role")
     def get_role_display(self, obj: CustomFormAutomaticNumbering):
-        return obj.get_role_display()
+        return obj.get_role_display(admin_display=True)
 
     def custom_form_numbers(self, obj: CustomFormAutomaticNumbering):
         current_number = custom_forms_current_numbers(obj.template)

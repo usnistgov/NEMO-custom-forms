@@ -101,9 +101,9 @@ def custom_forms(request, custom_form_template_id=None):
     user: User = request.user
     selected_template = CustomFormPDFTemplate.objects.filter(id=custom_form_template_id).first()
     if not selected_template:
-        # Select the first template that the user can create instances for
-        can_create_templates = available_templates_for_user_to_add(user)
-        selected_template = can_create_templates[0] if can_create_templates else None
+        # Select the first template that the user can see/create
+        available_templates = available_templates_for_user_to_see(user)
+        selected_template = available_templates[0] if available_templates else None
         if selected_template:
             return redirect("custom_forms", custom_form_template_id=selected_template.id)
         else:
@@ -262,7 +262,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
         form.cleaned_data = getattr(form, "cleaned_data", {})
         if custom_form.cancelled:
             form.add_error(None, "You are not allowed to edit cancelled forms.")
-        elif custom_form.status in [CustomForm.FormStatus.DENIED, CustomForm.FormStatus.APPROVED]:
+        elif custom_form.status in CustomForm.FormStatus.finished():
             form.add_error(None, f"You are not allowed to edit {custom_form.get_status_display().lower()} forms.")
         else:
             form.add_error(None, "You are not allowed to edit this form.")
@@ -405,8 +405,8 @@ def form_fields_group(request, form_id, group_name):
     )
 
 
-# TODO: maybe allow multiple permissions/groups
 # TODO: make it optional to have a PDF form (generate it from the form itself)
 # TODO: check what happens/should happen when form not approved
 # TODO: add signature + date as option for special mapping
 # TODO: categories in dropdown dynamic
+# TODO: add watermark pending to PDFs
