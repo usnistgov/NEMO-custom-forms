@@ -494,7 +494,7 @@ class CustomForm(BaseModel):
     class FormStatus(models.IntegerChoices):
         PENDING = 0, _("Pending")
         APPROVED = 1, _("Approved")
-        DENIED = 2, _("Denied")
+        DENIED = 2, _("Rejected")
         CLOSED = 3, _("Closed")
 
         @classmethod
@@ -568,7 +568,12 @@ class CustomForm(BaseModel):
 
         field_mappings = {**field_mappings, **self.get_template_data_input()}
 
-        return copy_and_fill_pdf_form(self.template.form.file, field_mappings, signature_mappings)
+        stamp = (
+            self.get_status_display() if self.status not in [self.FormStatus.APPROVED, self.FormStatus.CLOSED] else None
+        )
+        stamp_color = "gray" if self.status == self.FormStatus.PENDING else None
+
+        return copy_and_fill_pdf_form(self.template.form.file, field_mappings, signature_mappings, stamp, stamp_color)
 
     def get_template_data_input(self):
         form_inputs = get_submitted_user_inputs(self.template_data)
