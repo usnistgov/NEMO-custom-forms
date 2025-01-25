@@ -11,7 +11,6 @@ from NEMO.utilities import (
     format_datetime,
     get_full_url,
     get_model_instance,
-    slugify_underscore,
 )
 from NEMO.views.notifications import delete_notification
 from NEMO.views.pagination import SortedPaginator
@@ -389,9 +388,7 @@ def render_custom_form_pdf(request, custom_form_id):
     )
 
     pdf_response = HttpResponse(content_type="application/pdf")
-    pdf_response["Content-Disposition"] = (
-        f"attachment; filename={slugify_underscore(custom_form.template.name)}_{custom_form.form_number or custom_form.id}.pdf"
-    )
+    pdf_response["Content-Disposition"] = f"attachment; filename={custom_form.rendered_filename()}.pdf"
     pdf_response.write(merged_pdf_bytes)
     return pdf_response
 
@@ -406,7 +403,5 @@ def form_fields_group(request, form_id, group_name):
 
 
 # TODO: make it optional to have a PDF form (generate it from the form itself)
-# TODO: check what happens/should happen when form not approved
 # TODO: categories in dropdown dynamic
-# TODO: add watermark pending to PDFs
 # TODO: add filters in custom form page

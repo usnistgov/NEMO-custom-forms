@@ -112,6 +112,9 @@ class CustomFormPDFTemplateForm(forms.ModelForm):
         js = ("admin/dynamic_form_preview/dynamic_form_preview.js",)
         css = {"": ("admin/dynamic_form_preview/dynamic_form_preview.css",)}
 
+    class Meta:
+        widgets = {"filename_template": forms.Textarea(attrs={"rows": 4, "cols": 75})}
+
     def clean_form_fields(self):
         form_fields = self.cleaned_data["form_fields"]
         try:
@@ -217,9 +220,7 @@ class CustomFormAutomaticNumberingForm(forms.ModelForm):
     class Meta:
         model = CustomFormAutomaticNumbering
         fields = "__all__"
-        widgets = {
-            "numbering_template": forms.Textarea(attrs={"rows": 4, "cols": 75}),
-        }
+        widgets = {"numbering_template": forms.Textarea(attrs={"rows": 4, "cols": 75})}
 
 
 @admin.register(CustomFormAutomaticNumbering)

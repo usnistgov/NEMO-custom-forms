@@ -69,6 +69,15 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         upload_to=document_filename_upload, validators=[validate_pdf_form], help_text=_("The pdf form")
     )
     form_fields = models.TextField(help_text=_("JSON formatted fields list"))
+    filename_template = models.CharField(
+        max_length=CHAR_FIELD_LARGE_LENGTH,
+        default="{{ form.form_number|default_if_none:'' }}-{{ form.creation_time|date:'Y-md' }}",
+        help_text=_(
+            mark_safe(
+                '<div style="margin-top: 10px">The filename template for the generated PDF. Provided variables include: <ul style="margin-left: 20px"><li style="list-style: inherit"><b>form</b>: the custom form instance</li><li style="list-style: inherit"><b>form_data</b>: a dictionary containing all dynamic fields and their values</li></ul></div>'
+            )
+        ),
+    )
 
     def get_filename_upload(self, filename):
         from django.template.defaultfilters import slugify
@@ -117,18 +126,28 @@ class CustomFormPDFTemplate(SerializationByNameModel):
             return self.customformautomaticnumbering.next_custom_form_number(user, save)
 
     def clean(self):
+        errors = {}
+        try:
+            fake_form = CustomForm(template=self)
+            fake_form.rendered_filename()
+        except Exception as e:
+            errors["filename_template"] = [str(e)]
         if self.form_fields:
-            errors = validate_dynamic_form_model(self.form_fields, "custom_form_fields_group", self.id)
-            if errors:
-                raise ValidationError({"form_fields": error for error in errors})
-            if self.form:
+            form_field_errors = validate_dynamic_form_model(self.form_fields, "custom_form_fields_group", self.id)
+            if form_field_errors:
+                errors["form_fields"] = "\n".join(error for error in errors)
+            elif self.form:
                 pdf_form_fields = self.pdf_form_fields()
                 for re_field_name in self.get_re_field_names():
                     if not any(re.match(re_field_name, pdf_field) for pdf_field in pdf_form_fields):
                         field_name = re_field_name.replace(re_ends_with_number, "")
-                        errors.append(f"The field with name: {field_name} could not be found in the pdf fields")
-            if errors:
-                raise ValidationError({"form_fields": error for error in errors})
+                        form_field_errors.append(
+                            f"The field with name: {field_name} could not be found in the pdf fields"
+                        )
+            if form_field_errors:
+                errors["form_fields"] = "\n".join(error for error in errors)
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
         return self.name
@@ -682,6 +701,11 @@ class CustomForm(BaseModel):
                 result += f'<div class="progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="{index+1}" aria-valuemin="0" aria-valuemax="{number_of_actions}" style="white-space: nowrap;text-overflow: ellipsis;overflow: hidden;padding: 0 5px;width: {round(100/number_of_actions)}%;" title="{template_action.pending_status()}">{template_action.label}</div>'
         result += "</div>"
         return mark_safe(result)
+
+    def rendered_filename(self):
+        return Template(self.template.filename_template).render(
+            Context({"form": self, "form_data": self.get_template_data_input()})
+        )
 
     def __str__(self):
         return f"{self.name} by {self.creator}"
