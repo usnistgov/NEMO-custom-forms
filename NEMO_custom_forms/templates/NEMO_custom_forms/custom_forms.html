@@ -11,6 +11,10 @@
         {% button type="add" value="Add" url=create_custom_form_url %}
     {% endif %}
 {% endblock %}
+{% block before_pagination %}
+    {{ block.super }}
+    {% if user_can_view_all %}{# Filters go here #}{% endif %}
+{% endblock %}
 {% block pagination_content %}
     <table class="table table-bordered table-condensed table-align-middle table-hover thead-light"
            style="margin-bottom: 0">

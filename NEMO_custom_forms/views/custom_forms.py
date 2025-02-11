@@ -129,6 +129,7 @@ def custom_forms(request, custom_form_template_id=None):
     dictionary = {
         "page": page,
         "user_can_add": selected_template.can_user_create(user),
+        "user_can_view_all": selected_template.can_user_view_all(user),
         "template_columns": get_ordered_columns(selected_template, default_columns),
         "default_columns": default_columns,
         **get_dictionary_for_base(request, selected_template),
@@ -403,5 +404,4 @@ def form_fields_group(request, form_id, group_name):
 
 
 # TODO: make it optional to have a PDF form (generate it from the form itself)
-# TODO: categories in dropdown dynamic
 # TODO: add filters in custom form page
