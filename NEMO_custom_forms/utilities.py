@@ -4,6 +4,8 @@ import re
 from collections import defaultdict
 from typing import Any, Dict, List, TYPE_CHECKING, Tuple
 
+from NEMO_custom_forms.apps import CustomFormsConfig
+
 if TYPE_CHECKING:
     from NEMO_custom_forms.models import CustomFormAutomaticNumbering, CustomFormPDFTemplate
 
@@ -13,6 +15,7 @@ CUSTOM_FORM_GROUP_PREFIX = "g#"
 CUSTOM_FORM_USER_PREFIX = "u#"
 
 CUSTOM_FORM_NOTIFICATION = "customform"
+CUSTOM_FORM_EMAIL_CATEGORY = CustomFormsConfig.plugin_id + 1
 
 
 def default_dict_to_regular_dict(d):

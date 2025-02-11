@@ -1,0 +1,7 @@
+.progress-bar-custom-form-status
+{
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    padding: 0 5px;
+}

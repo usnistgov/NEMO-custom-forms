@@ -145,7 +145,7 @@ class CustomFormPDFTemplate(SerializationByNameModel):
                             f"The field with name: {field_name} could not be found in the pdf fields"
                         )
             if form_field_errors:
-                errors["form_fields"] = "\n".join(error for error in errors)
+                errors["form_fields"] = "\n".join(error for error in form_field_errors)
         if errors:
             raise ValidationError(errors)
 
@@ -322,15 +322,6 @@ class CustomFormAction(BaseModel):
     @classmethod
     def get_role_field(cls) -> RoleGroupPermissionChoiceField:
         return cls._meta.get_field("role")
-
-    def action_verb(self):
-        if self.action_type == self.ActionTypes.APPROVAL:
-            return _("Approve")
-        elif self.action_type == self.ActionTypes.SET_FORM_NUMBER:
-            return _("Set form number")
-        elif self.action_type == self.ActionTypes.NOTIFICATION:
-            return _("Acknowledge")
-        return ""
 
     def action_options(self) -> List[Tuple[str, str]]:
         if self.action_type == self.ActionTypes.APPROVAL:
@@ -611,7 +602,7 @@ class CustomForm(BaseModel):
                             data_input[f"{name}{i}"] = input_value
         return data_input
 
-    def process_action(self, user: User, action: CustomFormAction, action_value: str):
+    def process_action(self, user: User, action: CustomFormAction, action_value: str) -> CustomFormActionRecord:
         # double check user is allowed
         if action and (not self.can_take_action(user, action) or action != self.next_action()):
             raise ValidationError(_("You are not allowed to take this action"))
@@ -636,6 +627,7 @@ class CustomForm(BaseModel):
             elif not self.has_more_approval_actions():
                 self.status = self.FormStatus.APPROVED
                 self.save(update_fields=["status"])
+        return action_record
 
     @transaction.atomic
     def cancel(self, user: User, reason: str = None):
@@ -698,7 +690,7 @@ class CustomForm(BaseModel):
                 color = "info progress-bar-striped" if index < number_of_actions_recorded else "default"
                 if template_action == next_action:
                     color = "warning progress-bar-striped active"
-                result += f'<div class="progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="{index+1}" aria-valuemin="0" aria-valuemax="{number_of_actions}" style="white-space: nowrap;text-overflow: ellipsis;overflow: hidden;padding: 0 5px;width: {round(100/number_of_actions)}%;" title="{template_action.pending_status()}">{template_action.label}</div>'
+                result += f'<div class="progress-bar-custom-form-status progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="{index+1}" aria-valuemin="0" aria-valuemax="{number_of_actions}" style="width: {round(100/number_of_actions)}%;" title="{template_action.pending_status()}">{template_action.label}</div>'
         result += "</div>"
         return mark_safe(result)
 
