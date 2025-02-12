@@ -123,7 +123,7 @@ def custom_forms(request, custom_form_template_id=None):
     page = SortedPaginator(custom_form_list, request, order_by="-last_updated").get_current_page()
 
     if bool(request.GET.get("csv", False)):
-        return export_custom_forms(custom_form_list.order_by("-last_updated"), request)
+        return export_custom_forms(request, selected_template, custom_form_list.order_by("-last_updated"))
 
     default_columns = [
         ("form_number", "Form number"),
@@ -196,29 +196,44 @@ def get_dictionary_for_base(request, template: CustomFormPDFTemplate = None) -> 
     }
 
 
-def export_custom_forms(custom_form_list: QuerySetType[CustomForm], request):
+def export_custom_forms(request, selected_template: CustomFormPDFTemplate, custom_form_list: QuerySetType[CustomForm]):
     table = BasicDisplayTable()
-    table.add_header(("form_number", "Form number")),
-    table.add_header(("created_date", "Created date")),
-    table.add_header(("created_by", "Created by")),
-    table.add_header(("status", "Status")),
+    default_columns = [
+        ("form_number", "Form number"),
+        ("creation_time", "Created"),
+        ("creator", "Creator"),
+        ("status", "Status"),
+    ]
+    columns = get_ordered_columns(selected_template, default_columns).values()
+    table.headers.extend([(column[0], column[1] or column[0]) for column in columns])
     table.add_header(("cancelled", "Cancelled")),
     table.add_header(("cancelled_by", "Cancelled by")),
     table.add_header(("cancellation_reason", "Cancellation reason")),
     table.add_header(("notes", "Notes")),
-    table.add_header(("documents", "Documents")),
+    table.add_header(("document", "Document")),
+    for action in selected_template.customformaction_set.all():
+        table.add_header((f"action_{action.id}", action.label))
     for custom_form in custom_form_list:
         row = {
             "form_number": custom_form.form_number,
-            "created_date": format_datetime(custom_form.creation_time, "SHORT_DATE_FORMAT"),
-            "created_by": custom_form.creator,
+            "created_time": format_datetime(custom_form.creation_time, "SHORT_DATE_FORMAT"),
+            "creator": custom_form.creator,
             "status": custom_form.get_status_display(),
             "cancelled": format_datetime(custom_form.cancellation_time, "SHORT_DATE_FORMAT"),
             "cancelled_by": custom_form.cancelled_by,
             "cancellation_reason": custom_form.cancellation_reason,
             "notes": custom_form.notes or "",
-            "documents": get_full_url(reverse("render_custom_form_pdf", args=[custom_form.pk]), request),
+            "document": get_full_url(reverse("render_custom_form_pdf", args=[custom_form.pk]), request),
         }
+        data_input = custom_form.get_template_data_input()
+        for key in get_ordered_columns(selected_template, []).values():
+            row[key[0]] = data_input.get(key[0])
+        for action in selected_template.customformaction_set.all():
+            action_record = custom_form.get_action_record_for_rank(action.rank)
+            if action_record:
+                row[f"action_{action.id}"] = (
+                    f'{format_datetime(action_record.action_time, "SHORT_DATE_FORMAT")} by {action_record.action_taken_by.username}'
+                )
         table.add_row(row)
     filename = f"custom_forms_{export_format_datetime()}.csv"
     response = table.to_csv()
@@ -463,4 +478,3 @@ You can follow the status of your {custom_form.template.name} <a href="{absolute
 
 # TODO: make it optional to have a PDF form (generate it from the form itself)
 # TODO: add filters in custom form page
-# TODO: add custom columns in export
