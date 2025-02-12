@@ -357,7 +357,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                         action_record = custom_form.process_action(user, action, request.POST.get("action_result"))
                         send_custom_form_status_update(request, action, action_record)
                     create_custom_form_notification(custom_form)
-                    send_custom_form_notification_email(request, custom_form, edit, action)
+                    send_custom_form_notification_email(request, custom_form, edit)
                 return redirect("custom_forms", custom_form_template_id=custom_form.template_id)
             else:
                 if request.FILES.getlist("form_documents") or request.POST.get("remove_documents"):
@@ -424,8 +424,8 @@ def form_fields_group(request, form_id, group_name):
     )
 
 
-def send_custom_form_notification_email(request, custom_form: CustomForm, edit, action: CustomFormAction = None):
-    # First, send form received to creator (and cc emails when ready)
+def send_custom_form_notification_email(request, custom_form: CustomForm, edit):
+    # First, send form received to creator
     absolute_url_forms = get_full_url(reverse("custom_forms", args=[custom_form.template_id]), request)
     if not edit:
         send_mail(
@@ -456,7 +456,7 @@ You can follow the status of your {custom_form.template.name} <a href="{absolute
 
 def send_custom_form_status_update(request, action: CustomFormAction, action_record: CustomFormActionRecord):
     # get ccs from action
-    ccs = []
+    ccs = action.notification_email
     custom_form = action_record.custom_form
     absolute_url_forms = get_full_url(reverse("custom_forms", args=[custom_form.template_id]), request)
     number_of_actions = custom_form.template.customformaction_set.count()

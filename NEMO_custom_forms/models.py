@@ -6,7 +6,13 @@ import re
 from typing import KeysView, List, Optional, Tuple
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CHAR_FIELD_SMALL_LENGTH
-from NEMO.fields import DynamicChoicesCharField, MultiRoleGroupPermissionChoiceField, RoleGroupPermissionChoiceField
+from NEMO.fields import (
+    DynamicChoicesCharField,
+    MultiEmailField,
+    MultiEmailWidget,
+    MultiRoleGroupPermissionChoiceField,
+    RoleGroupPermissionChoiceField,
+)
 from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
 from NEMO.typing import QuerySetType
 from NEMO.utilities import (
@@ -301,6 +307,12 @@ class CustomFormAction(BaseModel):
         groups=True,
         verbose_name="Role/Group",
         help_text=_("The role/group required for users to take the action"),
+    )
+    notification_email = MultiEmailField(
+        null=True,
+        blank=True,
+        help_text=_("Email addresses to cc when this action is taken"),
+        widget=MultiEmailWidget(attrs={"size": ""}),
     )
     self_action_allowed = models.BooleanField(
         default=False,
