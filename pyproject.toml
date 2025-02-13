@@ -33,8 +33,8 @@ Changelog = "https://github.com/usnistgov/NEMO-custom-forms/releases"
 Issues = "https://github.com/usnistgov/NEMO-custom-forms/issues"
 
 [project.optional-dependencies]
-NEMO-CE = ["NEMO-CE>=6.0.0",]
-NEMO = ["NEMO>=6.0.0",]
+NEMO-CE = ["NEMO-CE>=7.0.0",]
+NEMO = ["NEMO>=7.0.0",]
 dev-tools = ["pre-commit", "djlint", "black"]
 
 [tool.setuptools.packages.find]
