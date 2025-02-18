@@ -21,7 +21,7 @@ from NEMO.utilities import (
     quiet_int,
     update_media_file_on_model_update,
 )
-from NEMO.views.constants import CHAR_FIELD_MAXIMUM_LENGTH, MEDIA_PROTECTED
+from NEMO.views.constants import MEDIA_PROTECTED
 from NEMO.views.notifications import delete_notification
 from NEMO.widgets.dynamic_form import (
     DynamicForm,
@@ -127,7 +127,7 @@ class CustomFormPDFTemplate(SerializationByNameModel):
     def filename(self):
         return os.path.basename(self.form.name)
 
-    def next_custom_form_number(self, user: User, save=False) -> str:
+    def next_custom_form_number(self, user: User, save=False) -> Optional[str]:
         if hasattr(self, "customformautomaticnumbering"):
             return self.customformautomaticnumbering.next_custom_form_number(user, save)
 
@@ -246,7 +246,7 @@ class CustomFormAutomaticNumbering(BaseModel):
     def can_generate_custom_form_number(self, user):
         return self.get_role_field().has_user_role(self.role, user)
 
-    def next_custom_form_number(self, user: User, save=False) -> str:
+    def next_custom_form_number(self, user: User, save=False) -> Optional[str]:
         if self.enabled and (self.can_generate_custom_form_number(user) or self.generate_automatically()):
             current_number_customization = (
                 f"{CUSTOM_FORM_CURRENT_NUMBER_PREFIX}_{CUSTOM_FORM_TEMPLATE_PREFIX}{self.template_id}"
@@ -373,10 +373,10 @@ class CustomFormSpecialMapping(BaseModel):
     ]
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     field_name = models.CharField(
-        max_length=CHAR_FIELD_MAXIMUM_LENGTH, help_text=_("The pdf template field name to map this value to")
+        max_length=CHAR_FIELD_MEDIUM_LENGTH, help_text=_("The pdf template field name to map this value to")
     )
     field_value = DynamicChoicesCharField(
-        max_length=CHAR_FIELD_MAXIMUM_LENGTH, choices=FieldValue.choices, help_text=_("The special value to map it to")
+        max_length=CHAR_FIELD_MEDIUM_LENGTH, choices=FieldValue.choices, help_text=_("The special value to map it to")
     )
     field_value_action = models.ForeignKey(
         CustomFormAction,
@@ -386,7 +386,7 @@ class CustomFormSpecialMapping(BaseModel):
         help_text=_("The action (for action mappings only)"),
     )
     field_value_boolean = models.CharField(
-        max_length=CHAR_FIELD_MAXIMUM_LENGTH,
+        max_length=CHAR_FIELD_MEDIUM_LENGTH,
         null=True,
         blank=True,
         help_text=_("Comma separated values to map approved/denied states, i.e. 'Yes,No'"),
@@ -523,7 +523,7 @@ class CustomForm(BaseModel):
         def finished(cls):
             return [cls.DENIED, cls.CLOSED]
 
-    form_number = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MAXIMUM_LENGTH, unique=True)
+    form_number = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MEDIUM_LENGTH, unique=True)
     creation_time = models.DateTimeField(auto_now_add=True, help_text=_("The date and time when the form was created."))
     creator = models.ForeignKey(User, related_name="custom_forms_created", on_delete=models.CASCADE)
     last_updated = models.DateTimeField(auto_now=True, help_text=_("The last time this form was modified."))
@@ -544,7 +544,7 @@ class CustomForm(BaseModel):
     cancelled_by = models.ForeignKey(
         User, related_name="custom_forms_cancelled", null=True, blank=True, on_delete=models.SET_NULL
     )
-    cancellation_reason = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MAXIMUM_LENGTH)
+    cancellation_reason = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MEDIUM_LENGTH)
 
     class Meta:
         ordering = ["-last_updated"]
