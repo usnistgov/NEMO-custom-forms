@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from charset_normalizer.md import getLogger
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf.constants import (
     AnnotationDictionaryAttributes,
@@ -190,12 +191,21 @@ def merge_documents(document_list: List[bytes | CustomFormDocuments]) -> Optiona
     :return: The merged PDF document as a byte string, or None if the
              merging process fails completely.
     """
+    from NEMO_custom_forms.models import CustomFormDocuments
+
     merger = PdfWriter()
 
     for document in document_list:
         try:
             if isinstance(document, bytes):
                 doc_bytes = document
+            elif (
+                isinstance(document, CustomFormDocuments)
+                and document.document
+                and default_storage.exists(document.document.name)
+            ):
+                with default_storage.open(document.document.name) as opened_file:
+                    doc_bytes = opened_file.read()
             else:
                 doc_bytes = get_bytes_from_url_document(document.full_link())
             with BytesIO(doc_bytes) as byte_stream:

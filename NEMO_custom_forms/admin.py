@@ -200,7 +200,7 @@ class CustomFormDocumentTypeAdmin(admin.ModelAdmin):
 @admin.register(CustomForm)
 class CustomFormAdmin(admin.ModelAdmin):
     inlines = [CustomFormDocumentsInline, CustomFormActionRecordInline]
-    list_display = ["form_number", "status", "last_updated", "creator", "template", "cancelled"]
+    list_display = ["creation_time", "form_number", "status", "last_updated", "creator", "template", "cancelled"]
     list_filter = [
         ("creator", admin.RelatedOnlyFieldListFilter),
         ("template", admin.RelatedOnlyFieldListFilter),
