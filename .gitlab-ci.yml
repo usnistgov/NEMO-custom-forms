@@ -58,6 +58,6 @@ Release to PyPI:
     - sed -i "s/^version =.*/version = '$(git describe --tags)'/" pyproject.toml
     - pip install --upgrade pip build twine
     - python -m build
-    - twine upload --user $PYPI_USER --password $PYPI_PASSWORD ./dist/NEMO_custom_forms*
+    - twine upload --user $PYPI_USER --password $PYPI_PASSWORD ./dist/nemo_custom_forms*
   only:
     - tags
