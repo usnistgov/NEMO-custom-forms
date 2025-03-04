@@ -200,13 +200,13 @@ def export_custom_forms(request, selected_template: CustomFormPDFTemplate, custo
     table = BasicDisplayTable()
     default_columns = [
         ("form_number", "Form number"),
-        ("creation_time", "Created"),
+        ("creation_time", "Created on"),
         ("creator", "Creator"),
         ("status", "Status"),
     ]
     columns = get_ordered_columns(selected_template, default_columns).values()
     table.headers.extend([(column[0], column[1] or column[0]) for column in columns])
-    table.add_header(("cancelled", "Cancelled")),
+    table.add_header(("cancelled", "Cancelled on")),
     table.add_header(("cancelled_by", "Cancelled by")),
     table.add_header(("cancellation_reason", "Cancellation reason")),
     table.add_header(("notes", "Notes")),
@@ -216,10 +216,12 @@ def export_custom_forms(request, selected_template: CustomFormPDFTemplate, custo
     for custom_form in custom_form_list:
         row = {
             "form_number": custom_form.form_number,
-            "created_time": format_datetime(custom_form.creation_time, "SHORT_DATE_FORMAT"),
+            "creation_time": format_datetime(custom_form.creation_time, "SHORT_DATETIME_FORMAT"),
             "creator": custom_form.creator,
             "status": custom_form.get_status_display(),
-            "cancelled": format_datetime(custom_form.cancellation_time, "SHORT_DATE_FORMAT"),
+            "cancelled": (
+                format_datetime(custom_form.cancellation_time, "SHORT_DATE_FORMAT") if custom_form.cancelled else ""
+            ),
             "cancelled_by": custom_form.cancelled_by,
             "cancellation_reason": custom_form.cancellation_reason,
             "notes": custom_form.notes or "",
