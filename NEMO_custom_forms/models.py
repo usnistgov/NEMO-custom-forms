@@ -75,6 +75,13 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         upload_to=document_filename_upload, validators=[validate_pdf_form], help_text=_("The pdf form")
     )
     form_fields = models.TextField(help_text=_("JSON formatted fields list"))
+    notes_placeholder = models.CharField(
+        max_length=CHAR_FIELD_MEDIUM_LENGTH,
+        default="Provide additional details if needed",
+        blank=True,
+        null=True,
+        help_text=_("Placeholder text for the notes field"),
+    )
     filename_template = models.CharField(
         max_length=CHAR_FIELD_LARGE_LENGTH,
         default="{{ form.form_number|default_if_none:'' }}-{{ form.creation_time|date:'Y-md' }}",
