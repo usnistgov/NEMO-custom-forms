@@ -530,7 +530,7 @@ class CustomForm(BaseModel):
         def finished(cls):
             return [cls.DENIED, cls.CLOSED]
 
-    form_number = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MEDIUM_LENGTH, unique=True)
+    form_number = models.CharField(null=True, blank=True, max_length=CHAR_FIELD_MEDIUM_LENGTH)
     creation_time = models.DateTimeField(auto_now_add=True, help_text=_("The date and time when the form was created."))
     creator = models.ForeignKey(User, related_name="custom_forms_created", on_delete=models.CASCADE)
     last_updated = models.DateTimeField(auto_now=True, help_text=_("The last time this form was modified."))
