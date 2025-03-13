@@ -637,7 +637,7 @@ class CustomForm(BaseModel):
         if not action_record.action_result:
             self.status = self.FormStatus.DENIED
             self.save(update_fields=["status"])
-        if action_value:
+        else:
             # No more actions needed, mark as CLOSED
             if not self.next_action():
                 self.status = self.FormStatus.CLOSED
