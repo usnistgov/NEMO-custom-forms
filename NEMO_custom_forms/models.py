@@ -149,14 +149,6 @@ class CustomFormPDFTemplate(SerializationByNameModel):
             form_field_errors = validate_dynamic_form_model(self.form_fields, "custom_form_fields_group", self.id)
             if form_field_errors:
                 errors["form_fields"] = "\n".join(error for error in errors)
-            elif self.form:
-                pdf_form_fields = self.pdf_form_fields()
-                for re_field_name in self.get_re_field_names():
-                    if not any(re.match(re_field_name, pdf_field) for pdf_field in pdf_form_fields):
-                        field_name = re_field_name.replace(re_ends_with_number, "")
-                        form_field_errors.append(
-                            f"The field with name: {field_name} could not be found in the pdf fields"
-                        )
             if form_field_errors:
                 errors["form_fields"] = "\n".join(error for error in form_field_errors)
         if errors:

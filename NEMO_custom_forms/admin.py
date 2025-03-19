@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 from NEMO.mixins import ModelAdminRedirectMixin
 from NEMO.models import User
@@ -22,6 +23,7 @@ from NEMO_custom_forms.models import (
     CustomFormDocuments,
     CustomFormPDFTemplate,
     CustomFormSpecialMapping,
+    re_ends_with_number,
 )
 from NEMO_custom_forms.utilities import custom_forms_current_numbers
 
@@ -132,6 +134,17 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     readonly_fields = ["_pdf_form_fields", "_form_fields_preview"]
     inlines = [CustomFormActionAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
     actions = [duplicate_custom_form_template]
+
+    def save_form(self, request, form, change):
+        # Add warning message that some fields could not be found in the PDF
+        instance: CustomFormPDFTemplate = super().save_form(request, form, change)
+        if instance.form:
+            pdf_form_fields = instance.pdf_form_fields()
+            for re_field_name in instance.get_re_field_names():
+                if not any(re.match(re_field_name, pdf_field) for pdf_field in pdf_form_fields):
+                    field_name = re_field_name.replace(re_ends_with_number, "")
+                    messages.warning(request, f"The field with name: {field_name} could not be found in the pdf fields")
+        return instance
 
     def _pdf_form_fields(self, obj: CustomFormPDFTemplate):
         if obj.form:
