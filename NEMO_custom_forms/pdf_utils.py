@@ -340,7 +340,18 @@ def copy_and_fill_pdf_form(
     writer = clone_pdf(stream)
 
     for page in writer.pages:
-        writer.update_page_form_field_values(writer.pages[page.page_number], field_key_values)
+        writer.update_page_form_field_values(page, field_key_values)
+        for annotation in page.annotations:
+            annotation = annotation.get_object()
+            # Form fields are of type: widgets
+            is_annotation_sub_type_widget = annotation.get(AnnotationDictionaryAttributes.Subtype) == "/Widget"
+            if is_annotation_sub_type_widget:
+                if annotation.get(FieldDictionaryAttributes.FT) == "/Tx":  # Text field type
+                    # Remove the normal appearance dictionary
+                    if "/AP" in annotation:
+                        print(f"Removing appearance override for field: {annotation.get('/T')}")
+                        del annotation["/AP"]["/N"]  # This removes the entire appearance dictionary
+                        print(f"Normal appearance removed: {annotation.get('/AP')}")
 
     if flatten:
         flatten_pdf(writer)
