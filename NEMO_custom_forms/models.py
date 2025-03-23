@@ -146,7 +146,7 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         except Exception as e:
             errors["filename_template"] = [str(e)]
         if self.form_fields:
-            form_field_errors = validate_dynamic_form_model(self.form_fields, "custom_form_fields_group", self.id)
+            form_field_errors = validate_dynamic_form_model(self.form_fields, self, "form_fields")
             if form_field_errors:
                 errors["form_fields"] = "\n".join(error for error in errors)
             if form_field_errors:

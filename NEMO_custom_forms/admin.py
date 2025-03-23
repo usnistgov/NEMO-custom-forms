@@ -5,7 +5,7 @@ import re
 from NEMO.mixins import ModelAdminRedirectMixin
 from NEMO.models import User
 from NEMO.utilities import copy_media_file, new_model_copy
-from NEMO.widgets.dynamic_form import DynamicForm
+from NEMO.widgets.dynamic_form import admin_render_dynamic_form_preview
 from django import forms
 from django.contrib import admin, messages
 from django.db import transaction
@@ -166,15 +166,7 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
         return ""
 
     def _form_fields_preview(self, obj: CustomFormPDFTemplate):
-        if obj.id:
-            form_validity_div = '<div id="form_validity"></div>' if obj.form_fields else ""
-            return mark_safe(
-                '<div class="dynamic_form_preview">{}{}</div><div class="help dynamic_form_preview_help">Save form to preview form fields</div>'.format(
-                    DynamicForm(obj.form_fields).render("custom_form_fields_group", obj.id),
-                    form_validity_div,
-                )
-            )
-        return ""
+        return admin_render_dynamic_form_preview(obj, "form_fields")
 
     @admin.display(description="View all permissions", ordering="view_all_permissions")
     def get_view_all_permissions(self, obj: CustomFormPDFTemplate):

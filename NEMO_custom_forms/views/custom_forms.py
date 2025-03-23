@@ -15,7 +15,7 @@ from NEMO.utilities import (
 )
 from NEMO.views.notifications import delete_notification
 from NEMO.views.pagination import SortedPaginator
-from NEMO.widgets.dynamic_form import DynamicForm, render_group_questions
+from NEMO.widgets.dynamic_form import DynamicForm
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -293,7 +293,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
     dictionary = {
         "dynamic_form_fields": DynamicForm(
             form_template.form_fields, custom_form.template_data if edit else None
-        ).render("custom_form_fields_group", form_template.id),
+        ).render(form_template, "form_fields"),
         "selected_template": form_template,
         "action": custom_form.next_action() if custom_form and custom_form.can_take_next_action(user) else None,
         "document_types": CustomFormDocumentType.objects.filter(
@@ -415,15 +415,6 @@ def render_custom_form_pdf(request, custom_form_id):
     pdf_response["Content-Disposition"] = f"attachment; filename={custom_form.rendered_filename()}.pdf"
     pdf_response.write(merged_pdf_bytes)
     return pdf_response
-
-
-@login_required
-@require_GET
-def form_fields_group(request, form_id, group_name):
-    template = get_object_or_404(CustomFormPDFTemplate, id=form_id)
-    return HttpResponse(
-        render_group_questions(request, template.form_fields, "custom_form_fields_group", form_id, group_name)
-    )
 
 
 def send_custom_form_notification_email(request, custom_form: CustomForm, edit):

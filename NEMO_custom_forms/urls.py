@@ -41,11 +41,6 @@ urlpatterns = [
                     custom_forms.generate_custom_form_number,
                     name="generate_template_custom_form_number",
                 ),
-                path(
-                    "form_fields/<int:form_id>/<str:group_name>/",
-                    custom_forms.form_fields_group,
-                    name="custom_form_fields_group",
-                ),
             ]
         ),
     )
