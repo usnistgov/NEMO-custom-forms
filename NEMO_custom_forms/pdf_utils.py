@@ -341,17 +341,16 @@ def copy_and_fill_pdf_form(
 
     for page in writer.pages:
         writer.update_page_form_field_values(page, field_key_values)
+        # The following is a fix for text areas and textfield not being rendered properly in Adobe Reader
+        # This forces Adobe to render them
         for annotation in page.annotations:
             annotation = annotation.get_object()
-            # Form fields are of type: widgets
             is_annotation_sub_type_widget = annotation.get(AnnotationDictionaryAttributes.Subtype) == "/Widget"
             if is_annotation_sub_type_widget:
-                if annotation.get(FieldDictionaryAttributes.FT) == "/Tx":  # Text field type
+                if annotation.get(FieldDictionaryAttributes.FT) == "/Tx":
                     # Remove the normal appearance dictionary
-                    if "/AP" in annotation:
-                        print(f"Removing appearance override for field: {annotation.get('/T')}")
-                        del annotation["/AP"]["/N"]  # This removes the entire appearance dictionary
-                        print(f"Normal appearance removed: {annotation.get('/AP')}")
+                    if AnnotationDictionaryAttributes.AP in annotation:
+                        del annotation[AnnotationDictionaryAttributes.AP]["/N"]
 
     if flatten:
         flatten_pdf(writer)
