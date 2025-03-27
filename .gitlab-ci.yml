@@ -9,13 +9,7 @@ variables:
 .test: &test
   stage: test
   script:
-    - git clone https://github.com/usnistgov/NEMO
-    - cd NEMO
-    - git checkout 7.0.0.dev
-    - python -m pip install .
-    - cd ..
-    - python -m pip install .
-#    - python -m pip install ."[NEMO]"
+    - python -m pip install ."[NEMO]"
     - python ./run_tests.py
 
 
