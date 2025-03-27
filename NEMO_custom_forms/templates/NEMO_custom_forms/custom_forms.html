@@ -59,7 +59,7 @@
                             {% if custom_form.notes %}
                                 {% button icon="glyphicon-info-sign" type="warn" size="small" value="Notes" title=custom_form.notes|default_if_none:""|linebreaksbr data_toggle="tooltip-notes" %}
                             {% endif %}
-                            {% if custom_form.customformdocuments_set.all %}
+                            {% if custom_form.customformdocuments_set.all and user.is_any_part_of_staff %}
                                 <form method="post" style="display: inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="title" value="{{ custom_form.name }} documents">
