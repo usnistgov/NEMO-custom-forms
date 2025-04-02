@@ -114,7 +114,12 @@ def custom_forms(request, custom_form_template_id=None):
         else:
             return redirect("custom_form_templates")
     else:
-        custom_form_list = CustomForm.objects.filter(cancelled=False).filter(template=selected_template)
+        custom_form_list = (
+            CustomForm.objects.filter(cancelled=False)
+            .filter(template=selected_template)
+            .select_related("creator", "template")
+            .prefetch_related("customformdocuments_set", "template__customformaction_set", "customformactionrecord_set")
+        )
 
     if not selected_template.can_user_view_all(user) and not selected_template.can_user_approve(user):
         # Restrict the list to the ones users have created
@@ -172,7 +177,9 @@ def get_ordered_columns(selected_template: CustomFormPDFTemplate, default_column
 @administrator_required
 @require_GET
 def custom_form_templates(request):
-    custom_form_template_list = CustomFormPDFTemplate.objects.filter(enabled=True)
+    custom_form_template_list = CustomFormPDFTemplate.objects.filter(enabled=True).prefetch_related(
+        "customformspecialmapping_set", "customformaction_set"
+    )
     page = SortedPaginator(custom_form_template_list, request, order_by="name").get_current_page()
 
     dictionary = {"page": page, **get_dictionary_for_base(request)}
