@@ -18,7 +18,6 @@ from pypdf.constants import (
     CatalogDictionary,
     FieldDictionaryAttributes,
     InteractiveFormDictEntries,
-    PageAttributes,
 )
 from pypdf.generic import NameObject, NumberObject, PdfObject
 
@@ -96,12 +95,11 @@ def flatten_pdf(writer: PdfWriter):
 
 def add_signature_mappings_to_pdf(writer: PdfWriter, signature_mappings: Dict):
     for page in writer.pages:
-        if PageAttributes.ANNOTS in page:
-            page_annotations: Union[Dict, PdfObject] = page[PageAttributes.ANNOTS]
+        if page.annotations:
             for field_name, signature_text in signature_mappings.items():
                 if signature_text:
                     # For each annotation on the page, check for the field name
-                    for annotation in page_annotations:
+                    for annotation in page.annotations:
                         annotation_object = annotation.get_object()
                         # Check if the field name matches
                         if (
@@ -343,14 +341,15 @@ def copy_and_fill_pdf_form(
         writer.update_page_form_field_values(page, field_key_values)
         # The following is a fix for text areas and textfield not being rendered properly in Adobe Reader
         # This forces Adobe to render them
-        for annotation in page.annotations:
-            annotation = annotation.get_object()
-            is_annotation_sub_type_widget = annotation.get(AnnotationDictionaryAttributes.Subtype) == "/Widget"
-            if is_annotation_sub_type_widget:
-                if annotation.get(FieldDictionaryAttributes.FT) == "/Tx":
-                    # Remove the normal appearance dictionary
-                    if AnnotationDictionaryAttributes.AP in annotation:
-                        del annotation[AnnotationDictionaryAttributes.AP]["/N"]
+        if page.annotations:
+            for annotation in page.annotations:
+                annotation = annotation.get_object()
+                is_annotation_sub_type_widget = annotation.get(AnnotationDictionaryAttributes.Subtype) == "/Widget"
+                if is_annotation_sub_type_widget:
+                    if annotation.get(FieldDictionaryAttributes.FT) == "/Tx":
+                        # Remove the normal appearance dictionary
+                        if AnnotationDictionaryAttributes.AP in annotation:
+                            del annotation[AnnotationDictionaryAttributes.AP]["/N"]
 
     if flatten:
         flatten_pdf(writer)
