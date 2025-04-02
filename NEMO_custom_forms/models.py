@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from math import floor
 from typing import KeysView, List, Optional, Tuple
 
 from NEMO.constants import CHAR_FIELD_LARGE_LENGTH, CHAR_FIELD_MEDIUM_LENGTH, CHAR_FIELD_SMALL_LENGTH
@@ -357,18 +358,25 @@ class CustomFormAction(BaseModel):
 class CustomFormSpecialMapping(BaseModel):
     class FieldValue(models.TextChoices):  # Inner Class
         FORM_CREATOR = "creator", _("Form creator")
+        FORM_CREATOR_EMAIL = "creator_email", _("Form creator email")
         FORM_CREATION_TIME = "creation_time", _("Form creation time")
         FORM_NUMBER = "number", _("Form number")
         FORM_ACTION_TAKEN = "action_taken", _("Form action taken")
         FORM_ACTION_TAKEN_BY = "action_taken_by", _("Form action taken by")
+        FORM_ACTION_TAKEN_BY_SIGNATURE = "action_taken_by_signature", _("Form action taken by (Signature)")
         FORM_ACTION_TAKEN_TIME = "action_taken_time", _("Form action taken time")
         FORM_ACTION_TAKEN_BY_AND_TIME = "action_taken_by_time", _("Form action taken by + time")
+        FORM_ACTION_TAKEN_BY_AND_TIME_SIGNATURE = "action_taken_by_time_signature", _(
+            "Form action taken by + time (Signature)"
+        )
 
     action_values = [
         FieldValue.FORM_ACTION_TAKEN,
         FieldValue.FORM_ACTION_TAKEN_BY,
+        FieldValue.FORM_ACTION_TAKEN_BY_SIGNATURE,
         FieldValue.FORM_ACTION_TAKEN_TIME,
         FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME,
+        FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME_SIGNATURE,
     ]
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     field_name = models.CharField(
@@ -448,6 +456,8 @@ class CustomFormSpecialMapping(BaseModel):
     def get_value(self, custom_form: CustomForm):
         if self.field_value == self.FieldValue.FORM_CREATOR:
             return custom_form.creator.get_name()
+        elif self.field_value == self.FieldValue.FORM_CREATOR_EMAIL:
+            return custom_form.creator.email
         elif self.field_value == self.FieldValue.FORM_CREATION_TIME:
             return format_datetime(custom_form.creation_time, "SHORT_DATE_FORMAT")
         elif self.field_value == self.FieldValue.FORM_NUMBER:
@@ -457,11 +467,17 @@ class CustomFormSpecialMapping(BaseModel):
             if action:
                 if self.field_value == self.FieldValue.FORM_ACTION_TAKEN:
                     return yesno(action.action_result, self.field_value_boolean)
-                elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY:
+                elif (
+                    self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY
+                    or self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY_SIGNATURE
+                ):
                     return action.action_taken_by.get_name()
                 elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_TIME:
                     return format_datetime(action.action_time, "SHORT_DATE_FORMAT")
-                elif self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME:
+                elif (
+                    self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME
+                    or self.field_value == self.FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME_SIGNATURE
+                ):
                     return f"{action.action_taken_by.get_name()}     {format_datetime(action.action_time, 'SHORT_DATE_FORMAT')}"
         return ""
 
@@ -580,8 +596,8 @@ class CustomForm(BaseModel):
             if mapping_value is None:
                 mapping_value = ""
             if special_mapping.field_value in [
-                CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY,
-                CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME,
+                CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY_SIGNATURE,
+                CustomFormSpecialMapping.FieldValue.FORM_ACTION_TAKEN_BY_AND_TIME_SIGNATURE,
             ]:
                 signature_mappings[special_mapping.field_name] = mapping_value
             else:
@@ -694,14 +710,18 @@ class CustomForm(BaseModel):
             color = "success" if self.status == self.FormStatus.CLOSED else "danger"
             result += f'<div class="progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="1" aria-valuemin="0" aria-valuemax="1" style="width: 100%;">{self.get_status_display()}</div>'
         else:
-            number_of_actions = self.template.customformaction_set.count()
+            actions = self.template.customformaction_set.order_by("rank")
+            number_of_actions = len(actions)
             number_of_actions_recorded = self.customformactionrecord_set.count()
             next_action = self.next_action()
-            for index, template_action in enumerate(self.template.customformaction_set.order_by("rank")):
+            for index, template_action in enumerate(actions):
+                progress_width = floor(100 / number_of_actions)
+                if index == number_of_actions - 1:
+                    progress_width = 100 - index * progress_width
                 color = "info progress-bar-striped" if index < number_of_actions_recorded else "default"
                 if template_action == next_action:
                     color = "warning progress-bar-striped active"
-                result += f'<div class="progress-bar-custom-form-status progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="{index+1}" aria-valuemin="0" aria-valuemax="{number_of_actions}" style="width: {round(100/number_of_actions)}%;" title="{template_action.pending_status()}">{template_action.label}</div>'
+                result += f'<div class="progress-bar-custom-form-status progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="{index+1}" aria-valuemin="0" aria-valuemax="{number_of_actions}" style="width: {progress_width}%;" title="{template_action.pending_status()}">{template_action.label}</div>'
         result += "</div>"
         return mark_safe(result)
 
