@@ -157,6 +157,9 @@
                                 {% endif %}
                             {% endfor %}
                         {% endif %}
+                        {% if form.instance|can_edit_custom_form:user %}
+                            {% button type="save" value="Save changes" %}
+                        {% endif %}
                     {% elif not readonly %}
                         {% button type="save" value=form.instance.id|yesno:"Save changes,Create form" %}
                     {% endif %}
