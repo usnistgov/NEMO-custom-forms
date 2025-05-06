@@ -51,7 +51,6 @@
                         </div>
                         <input type="text"
                                class="form-control"
-                               name="form_number"
                                id="form_number"
                                {% if not selected_template.customformautomaticnumbering.role %}placeholder="Automatically generated"{% endif %}
                                value="{% if form.instance.form_number %}{{ form.instance.form_number }}{% else %}{{ form.form_number.value|default_if_none:"" }}{% endif %}"
@@ -62,13 +61,34 @@
                         <label for="form_number" class="control-label">Form number</label>
                         <input type="text"
                                class="form-control"
-                               name="form_number"
+                               {% if form.form_number.value or form.instance.form_number == None %}name="form_number"{% endif %}
                                id="form_number"
                                maxlength="{{ form.fields.form_number.max_length }}"
                                value="{% if form.instance.form_number %}{{ form.instance.form_number }}{% else %}{{ form.form_number.value|default_if_none:"" }}{% endif %}"
                                {% if form.instance.form_number %}disabled{% endif %} />
                     </div>
                 {% endif %}
+            </div>
+            <div class="col-md-4">
+                {% now "SHORT_DATETIME_FORMAT" as formatted_now %}
+                <div class="form-group">
+                    <label for="creation_date" class="control-label">Creation time</label>
+                    <input type="text"
+                           class="form-control"
+                           id="creation_date"
+                           value="{{ form.instance.creation_time|date:"SHORT_DATETIME_FORMAT"|default:formatted_now }}"
+                           disabled />
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group">
+                    <label for="creator" class="control-label">Creator</label>
+                    <input type="text"
+                           class="form-control"
+                           id="creator"
+                           value="{{ form.instance.creator|default:user }}"
+                           disabled />
+                </div>
             </div>
         </div>
         {{ dynamic_form_fields }}
