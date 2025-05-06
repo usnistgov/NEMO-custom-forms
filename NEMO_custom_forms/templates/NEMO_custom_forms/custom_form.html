@@ -140,13 +140,19 @@
         </div>
         {% if form.instance.status == 0 or action %}
             <div class="form-group row" style="margin-bottom: 0">
-                <div class="col-xs-6 text-left">
+                <div class="col-xs-4 text-left">
                     {% if form.instance.id and form.instance.status == 0 and not readonly %}
                         {% url 'cancel_custom_form' form.instance.id as cancel_custom_form_url %}
                         {% button type="delete" submit=False title="Delete form" value="Delete form" onclick="if (confirm('Are you sure you want to delete this form?')) {window.location.href='"|concat:cancel_custom_form_url|concat:"' }" %}
                     {% endif %}
                 </div>
-                <div class="col-xs-6 text-right">
+                <div class="col-xs-4 text-center">
+                    {% if form.instance.id %}
+                        {% url 'render_custom_form_pdf' form.instance.id as render_custom_form_pdf_url %}
+                        {% button type="export" value="Generate pdf" url=render_custom_form_pdf_url %}
+                    {% endif %}
+                </div>
+                <div class="col-xs-4 text-right">
                     {% if form.instance|can_take_next_action_for_custom_form:user %}
                         {% if action.self_action_allowed or user != form.instance.creator %}
                             {% for option in action.action_options %}
