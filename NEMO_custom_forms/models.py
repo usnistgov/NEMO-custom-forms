@@ -341,7 +341,7 @@ class CustomFormAction(BaseModel):
         elif self.action_type == self.ActionTypes.NOTIFICATION:
             return [("Acknowledge", "true")]
         elif self.action_type == self.ActionTypes.SET_FORM_NUMBER:
-            return [("Save", "true")]
+            return [("Save form number", "true")]
         return []
 
     def pending_status(self):

@@ -177,7 +177,11 @@
                         {% if action.self_action_allowed or user != form.instance.creator %}
                             {% for option in action.action_options %}
                                 {% if forloop.first %}
-                                    {% button type="save" submit=False name=option.0 title=option.0 icon="glyphicon-ok-circle" value=option.0 onclick="confirm_review_dialog('"|concat:action.id|concat:"', '"|concat:option.1|concat:"', this);" %}
+                                    {% if action.action_options|length == 1 %}
+                                        {% button type="info" submit=False name=option.0 title=option.0 icon="glyphicon-ok-circle" value=option.0 onclick="confirm_review_dialog('"|concat:action.id|concat:"', '"|concat:option.1|concat:"', this);" %}
+                                    {% else %}
+                                        {% button type="save" submit=False name=option.0 title=option.0 icon="glyphicon-ok-circle" value=option.0 onclick="confirm_review_dialog('"|concat:action.id|concat:"', '"|concat:option.1|concat:"', this);" %}
+                                    {% endif %}
                                 {% else %}
                                     {% button type="delete" submit=False name=option.0 title=option.0 icon="glyphicon-ban-circle" value=option.0 onclick="confirm_review_dialog('"|concat:action.id|concat:"', '"|concat:option.1|concat:"', this);" %}
                                 {% endif %}
