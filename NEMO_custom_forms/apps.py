@@ -8,6 +8,7 @@ class CustomFormsConfig(AppConfig):
     plugin_id = 1100  # Used to make EmailCategory and other IntegerChoices ranges unique
 
     def ready(self):
+        from NEMO_custom_forms import customizations  # forcing loading of customizations
         from django.utils.translation import gettext_lazy as _
         from NEMO.plugins.utils import (
             add_dynamic_notification_types,
