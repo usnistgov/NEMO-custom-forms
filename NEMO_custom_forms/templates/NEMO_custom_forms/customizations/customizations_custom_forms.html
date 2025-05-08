@@ -1,0 +1,40 @@
+<div class="panel-body">
+    <h3 class="customization-section-title" id="custom_form_action_required_email_id">
+        Custom form action required email
+    </h3>
+    <p>This email is sent to the users that can take the next action on a custom form</p>
+    <p>The following context variables are provided when the email is rendered:</p>
+    <ul>
+        <li>
+            <b>custom_form</b> - the custom form that the user can take the next action on
+        </li>
+    </ul>
+    {% include 'customizations/customizations_upload.html' with element=custom_form_action_required_email name='custom form action required email' key='custom_forms' %}
+    <div class="customization-separation"></div>
+</div>
+<div class="panel-body">
+    <h3 class="customization-section-title" id="custom_form_received_email_id">Custom form received email</h3>
+    <p>This email is sent to the creator of a custom form when it is submitted</p>
+    <p>The following context variables are provided when the email is rendered:</p>
+    <ul>
+        <li>
+            <b>custom_form</b> - the custom form that the user just submitted
+        </li>
+    </ul>
+    {% include 'customizations/customizations_upload.html' with element=custom_form_received_email name='custom form received email' key='custom_forms' %}
+    <div class="customization-separation"></div>
+</div>
+<div class="panel-body">
+    <h3 class="customization-section-title" id="custom_form_status_update_email_id">Custom form status update email</h3>
+    <p>
+        This email is sent to the creator of a custom form when the status was updated (if the action has a notification email list, that list is also cc'd)
+    </p>
+    <p>The following context variables are provided when the email is rendered:</p>
+    <ul>
+        <li>
+            <b>custom_form</b> - the custom form whose status was updated
+            <b>action_record</b> - the record of the action that was just taken
+        </li>
+    </ul>
+    {% include 'customizations/customizations_upload.html' with element=custom_form_status_update_email name='custom form status update email' key='custom_forms' %}
+</div>

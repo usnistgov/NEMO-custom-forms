@@ -11,8 +11,10 @@ from NEMO.utilities import (
     format_datetime,
     get_full_url,
     get_model_instance,
+    render_email_template,
     send_mail,
 )
+from NEMO.views.customization import get_media_file_contents
 from NEMO.views.notifications import delete_notification
 from NEMO.views.pagination import SortedPaginator
 from NEMO.widgets.dynamic_form import DynamicForm
@@ -364,9 +366,9 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                     if action:
                         delete_notification(CUSTOM_FORM_NOTIFICATION, custom_form.id)
                         action_record = custom_form.process_action(user, action, request.POST.get("action_result"))
-                        send_custom_form_status_update(request, action, action_record)
+                        send_custom_form_status_update(action_record, action.notification_email)
                     create_custom_form_notification(custom_form)
-                    send_custom_form_notification_email(request, custom_form, edit)
+                    send_custom_form_notification_email(custom_form, edit)
                 return redirect("custom_forms", custom_form_template_id=custom_form.template_id)
             else:
                 if request.FILES.getlist("form_documents") or request.POST.get("remove_documents"):
@@ -424,56 +426,49 @@ def render_custom_form_pdf(request, custom_form_id):
     return pdf_response
 
 
-def send_custom_form_notification_email(request, custom_form: CustomForm, edit):
+def send_custom_form_notification_email(custom_form: CustomForm, edit):
     # First, send form received to creator
-    absolute_url_forms = get_full_url(reverse("custom_forms", args=[custom_form.template_id]), request)
-    if not edit:
+    notification_template = get_media_file_contents("custom_form_received_email.html")
+    if notification_template and not edit:
+        message = render_email_template(notification_template, {"custom_form": custom_form})
         send_mail(
             subject=f"{custom_form.template.name} #{custom_form.form_number or custom_form.id} has been received",
-            content=f"""Dear {custom_form.creator.first_name},
-<br><br>
-Thank you for submitting a new {custom_form.template.name}.
-<br><br>
-You can follow the status of your {custom_form.template.name} <a href="{absolute_url_forms}">here</a>.              
-""",
+            content=message,
             from_email=None,
             to=custom_form.creator.get_emails(EmailNotificationType.BOTH_EMAILS),
             email_category=CUSTOM_FORM_EMAIL_CATEGORY,
         )
     # Second, notify users who can deal with the next action
     users_to_notify = set(custom_form.next_action_candidates())
-    if users_to_notify:
-        absolute_url_action = get_full_url(reverse("custom_form_action", args=[custom_form.id]), request)
+    action_required_template = get_media_file_contents("custom_form_action_required_email.html")
+    if action_required_template and users_to_notify:
+        message = render_email_template(action_required_template, {"custom_form": custom_form})
         send_mail(
             subject=f"{custom_form.template.name} #{custom_form.form_number or custom_form.id}: action required",
-            content=f"""Please follow <a href="{absolute_url_action}">this link</a> to take the next action for this {custom_form.template.name}.
-""",
+            content=message,
             from_email=None,
             to=[email for user in users_to_notify for email in user.get_emails(EmailNotificationType.BOTH_EMAILS)],
             email_category=CUSTOM_FORM_EMAIL_CATEGORY,
         )
 
 
-def send_custom_form_status_update(request, action: CustomFormAction, action_record: CustomFormActionRecord):
-    # get ccs from action
-    ccs = action.notification_email
+def send_custom_form_status_update(action_record: CustomFormActionRecord, notification_email: List[str]):
     custom_form = action_record.custom_form
-    absolute_url_forms = get_full_url(reverse("custom_forms", args=[custom_form.template_id]), request)
     number_of_actions = custom_form.template.customformaction_set.count()
     number_of_actions_recorded = custom_form.customformactionrecord_set.count()
-    send_mail(
-        subject=f"{custom_form.template.name} #{custom_form.form_number or custom_form.id}: status update ({number_of_actions_recorded} of {number_of_actions})",
-        content=f"""Dear {custom_form.creator.first_name},
-<br><br>
-{action_record.action_taken_by.first_name} has completed the following action: {action.label}.
-<br><br>
-You can follow the status of your {custom_form.template.name} <a href="{absolute_url_forms}">here</a>.              
-""",
-        from_email=None,
-        to=custom_form.creator.get_emails(EmailNotificationType.BOTH_EMAILS),
-        bcc=ccs,
-        email_category=CUSTOM_FORM_EMAIL_CATEGORY,
-    )
+    status_update_template = get_media_file_contents("custom_form_status_update_email.html")
+    if status_update_template:
+        message = render_email_template(
+            status_update_template, {"custom_form": custom_form, "action_record": action_record}
+        )
+        send_mail(
+            subject=f"{custom_form.template.name} #{custom_form.form_number or custom_form.id}: status update ({number_of_actions_recorded} of {number_of_actions})",
+            content=message,
+            from_email=None,
+            to=custom_form.creator.get_emails(EmailNotificationType.BOTH_EMAILS),
+            bcc=notification_email,
+            email_category=CUSTOM_FORM_EMAIL_CATEGORY,
+        )
 
 
 # TODO: make it optional to have a PDF form (generate it from the form itself)

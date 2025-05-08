@@ -634,6 +634,7 @@ class CustomForm(BaseModel):
         if action and (not self.can_take_action(user, action) or action != self.next_action()):
             raise ValidationError(_("You are not allowed to take this action"))
         action_record = CustomFormActionRecord()
+        action_record.action_name = action.name
         action_record.action_type = action.action_type
         action_record.action_rank = action.rank
         action_record.custom_form = self
@@ -758,6 +759,9 @@ class CustomFormDocuments(BaseDocumentModel):
 
 class CustomFormActionRecord(BaseModel):
     custom_form = models.ForeignKey(CustomForm, on_delete=models.CASCADE)
+    action_name = models.CharField(
+        null=True, blank=True, max_length=CHAR_FIELD_SMALL_LENGTH, help_text=_("The optional action name")
+    )
     action_type = DynamicChoicesCharField(
         max_length=CHAR_FIELD_SMALL_LENGTH,
         choices=CustomFormAction.ActionTypes.choices,
@@ -792,3 +796,7 @@ class CustomFormActionRecord(BaseModel):
                     and not self.custom_form.form_number
                 ):
                     raise ValidationError(_("The form number is not set, please set it before continuing"))
+
+    @property
+    def label(self):
+        return f"{self.action_name or self.get_action_type_display()}"
