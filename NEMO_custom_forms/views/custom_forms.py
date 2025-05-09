@@ -439,10 +439,11 @@ def send_custom_form_notification_email(custom_form: CustomForm, edit):
             email_category=CUSTOM_FORM_EMAIL_CATEGORY,
         )
     # Second, notify users who can deal with the next action
+    next_action = custom_form.next_action()
     users_to_notify = set(custom_form.next_action_candidates())
     action_required_template = get_media_file_contents("custom_form_action_required_email.html")
     if action_required_template and users_to_notify:
-        message = render_email_template(action_required_template, {"custom_form": custom_form})
+        message = render_email_template(action_required_template, {"custom_form": custom_form, "action": next_action})
         send_mail(
             subject=f"{custom_form.template.name} #{custom_form.form_number or custom_form.id}: action required",
             content=message,

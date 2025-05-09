@@ -1,6 +1,6 @@
 [project]
 name = "NEMO-custom-forms"
-version = "1.3.1"
+version = "1.3.2"
 description = "Plugin for NEMO allowing creation, rendering and approval of custom forms for users/staff"
 keywords = ["NEMO"]
 readme = "README.md"
