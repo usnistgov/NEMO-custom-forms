@@ -13,7 +13,7 @@
             <tr>
                 <td align="center" style="color: white; background: #5bc0de; padding: 50px 0" bgcolor="#5bc0de">
                     <h1 style="max-width: 90%; margin: 0 auto; padding: 0;">
-                        {{ custom_form.template.name|upper }} #{{ custom_form.form_number|default:custom_form.id|upper }}: UPDATE ({{ custom_form.template.customformaction_set.count }} OF {{ custom_form.customformactionrecord_set.count }})
+                        {{ custom_form.template.name|upper }} #{{ custom_form.form_number|default:custom_form.id|upper }}: UPDATE ({{ custom_form.customformactionrecord_set.count }} OF {{ custom_form.template.customformaction_set.count }})
                     </h1>
                 </td>
             </tr>
