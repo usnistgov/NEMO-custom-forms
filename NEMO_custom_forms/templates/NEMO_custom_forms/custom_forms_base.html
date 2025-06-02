@@ -53,8 +53,8 @@
         <div class="panel-body">
             {% block tab_content %}
                 {% block before_pagination %}
-                    <div class="row" style="margin-top: 15px;{% if page %} margin-bottom: 15px;{% endif %}">
-                        <div class="col-md-9 col-xs-8">
+                    <div class="row" style="margin-top: 15px;">
+                        <div class="col-md-9 col-xs-8" style="margin-bottom: {% if page %}-15px{% else %}0px{% endif %}">
                             <form class="form-horizontal" method="get">
                                 <div class="form-group">
                                     <label class="col-xs-5 col-sm-4 col-md-3 col-lg-2 control-label" for="form_status">Status</label>
