@@ -53,11 +53,47 @@
         <div class="panel-body">
             {% block tab_content %}
                 {% block before_pagination %}
-                    <div class="pull-right" style="{% if page %}margin-bottom: 15px;{% endif %}">
-                        {% if not custom_form_templates_url in request.path %}
-                            {% button type="export" value="Export" url=request.path|concat:"?csv=true" target="_blank" %}
-                        {% endif %}
-                        {% block add_button %}{% endblock %}
+                    <div class="row" style="margin-top: 15px;{% if page %} margin-bottom: 15px;{% endif %}">
+                        <div class="col-md-9 col-xs-8">
+                            <form class="form-horizontal" method="get">
+                                <div class="form-group">
+                                    <label class="col-xs-5 col-sm-4 col-md-3 col-lg-2 control-label" for="form_status">Status</label>
+                                    <div class="col-xs-7 col-md-6">
+                                        <select id="form_status" name="form_status" class="form-control">
+                                            <option value="" selected>All</option>
+                                            {% for status in form_statuses %}
+                                                <option value="{{ status.0 }}" {% if status.0 == selected_status|to_int %}selected{% endif %}>{{ status.1 }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                                {% if selected_template.customformaction_set.count > 1 %}
+                                    <div class="form-group">
+                                        <label class="col-xs-5 col-sm-4 col-md-3 col-lg-2 control-label" for="form_action_rank">Current action</label>
+                                        <div class="col-xs-7 col-md-6">
+                                            <select id="form_action_rank" name="form_action_rank" class="form-control">
+                                                <option value="" selected>Any</option>
+                                                {% for possible_action in selected_template.customformaction_set.all %}
+                                                    <option value="{{ possible_action.rank }}"
+                                                            {% if possible_action.rank == selected_action_rank|to_int %}selected{% endif %}>
+                                                        {{ possible_action.pending_status|capfirst }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                <div class="form-group">
+                                    <div class="col-xs-offset-2 col-xs-10">{% button type="save" value="Update" %}</div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="col-sm-4 col-md-3 text-right">
+                            {% if not custom_form_templates_url in request.path %}
+                                {% button type="export" value="Export" url=request.path|concat:"?csv=true" target="_blank" %}
+                            {% endif %}
+                            {% block add_button %}{% endblock %}
+                        </div>
                     </div>
                 {% endblock %}
                 {% if page %}

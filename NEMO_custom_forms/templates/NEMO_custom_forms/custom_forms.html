@@ -42,7 +42,7 @@
                     <tr class="{% if custom_form.status == status_denied %}danger{% elif custom_form.status == status_approved %}{% elif custom_form.status == status_closed %}success{% endif %}">
                         {% for column in template_columns.values %}
                             {% if column.0 == "form_number" %}
-                                <td>{{ custom_form.form_number|default_if_none:"" }}</td>
+                                <td class="text-nowrap">{{ custom_form.form_number|default_if_none:"" }}</td>
                             {% elif column.0 == "creation_time" %}
                                 <td>{{ custom_form.creation_time|date:"SHORT_DATETIME_FORMAT" }}</td>
                             {% elif column.0 == "creator" %}

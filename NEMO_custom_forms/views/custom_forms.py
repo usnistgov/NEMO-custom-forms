@@ -11,6 +11,7 @@ from NEMO.utilities import (
     format_datetime,
     get_full_url,
     get_model_instance,
+    quiet_int,
     render_email_template,
     send_mail,
 )
@@ -127,6 +128,19 @@ def custom_forms(request, custom_form_template_id=None):
         # Restrict the list to the ones users have created
         custom_form_list = custom_form_list.filter(creator=user)
 
+    form_status = request.GET.get("form_status")
+    if form_status:
+        custom_form_list = custom_form_list.filter(status=form_status)
+    form_action_rank = quiet_int(request.GET.get("form_action_rank"))
+    if form_action_rank:
+        custom_form_list = custom_form_list.exclude(status__in=CustomForm.FormStatus.finished())
+        if form_action_rank == 1:
+            custom_form_list = custom_form_list.filter(customformactionrecord__isnull=True)
+        else:
+            custom_form_list = custom_form_list.filter(
+                customformactionrecord__action_rank__in=[form_action_rank - 1]
+            ).exclude(customformactionrecord__action_rank__in=[form_action_rank])
+
     page = SortedPaginator(custom_form_list, request, order_by="-last_updated").get_current_page()
 
     if bool(request.GET.get("csv", False)):
@@ -200,6 +214,9 @@ def get_dictionary_for_base(request, template: CustomFormPDFTemplate = None) -> 
     return {
         "title": f"{template.name} forms" if template else "Template list",
         "selected_template": template,
+        "form_statuses": CustomForm.FormStatus.choices,
+        "selected_status": request.GET.get("form_status"),
+        "selected_action_rank": request.GET.get("form_action_rank"),
         "form_templates": available_templates_for_user_to_see(request.user),
         "custom_form_notifications": default_dict_to_regular_dict(custom_form_notifications),
     }
