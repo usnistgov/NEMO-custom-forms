@@ -570,7 +570,10 @@ class CustomForm(BaseModel):
 
     def next_action(self) -> Optional[CustomFormAction]:
         if self.template_id:
-            for action in self.template.customformaction_set.order_by("rank"):
+            # This is done on purpose (ordering by rank) so we can leverage prefetch_related in the custom_forms view
+            actions = self.template.customformaction_set.all()
+            actions = sorted(actions, key=lambda x: x.rank)
+            for action in actions:
                 if not self.get_action_record_for_rank(action.rank):
                     return action
 
@@ -583,8 +586,12 @@ class CustomForm(BaseModel):
         ).count()
         return approval_actions > approval_action_recorded
 
-    def get_action_record_for_rank(self, rank: int) -> CustomFormActionRecord:
-        return self.customformactionrecord_set.filter(action_rank=rank).first()
+    def get_action_record_for_rank(self, rank: int) -> Optional[CustomFormActionRecord]:
+        # This is done on purpose because self.customformactionrecord_set.filter(action_rank=rank) cannot be prefetched
+        for action_record in self.customformactionrecord_set.all():
+            if action_record.action_rank == rank:
+                return action_record
+        return None
 
     def get_filled_pdf_template(self) -> bytes:
         # we are splitting regular field mappings and "signature" mappings
@@ -711,7 +718,9 @@ class CustomForm(BaseModel):
             color = "success" if self.status == self.FormStatus.CLOSED else "danger"
             result += f'<div class="progress-bar progress-bar-{color}" role="progressbar" aria-valuenow="1" aria-valuemin="0" aria-valuemax="1" style="width: 100%;">{self.get_status_display()}</div>'
         else:
-            actions = self.template.customformaction_set.order_by("rank")
+            # This is done on purpose (ordering by rank) so we can leverage prefetch_related in the custom_forms view
+            actions = self.template.customformaction_set.all()
+            actions = sorted(actions, key=lambda x: x.rank)
             number_of_actions = len(actions)
             number_of_actions_recorded = self.customformactionrecord_set.count()
             next_action = self.next_action()

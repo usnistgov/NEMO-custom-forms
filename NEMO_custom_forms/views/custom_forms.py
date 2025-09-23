@@ -194,7 +194,7 @@ def get_ordered_columns(selected_template: CustomFormPDFTemplate, default_column
 @require_GET
 def custom_form_templates(request):
     custom_form_template_list = CustomFormPDFTemplate.objects.filter(enabled=True).prefetch_related(
-        "customformspecialmapping_set", "customformaction_set"
+        "customformspecialmapping_set__field_value_action", "customformaction_set"
     )
     page = SortedPaginator(custom_form_template_list, request, order_by="name").get_current_page()
 
@@ -204,7 +204,7 @@ def custom_form_templates(request):
 
 
 def get_dictionary_for_base(request, template: CustomFormPDFTemplate = None) -> Dict:
-    # Grab and organise notifications by template
+    # Grab and organize notifications by template
     notifications = Notification.objects.filter(notification_type=CUSTOM_FORM_NOTIFICATION, user=request.user)
     custom_form_notifications = defaultdict(int)
     for notification in notifications:
