@@ -198,11 +198,28 @@
         {% endif %}
     </form>
     <script>
-        custom_form_jq = $("#custom_form_form");
+        const custom_form_jq = $("#custom_form_form");
 
         window.addEventListener("load", function ()
         {
             auto_size_textarea($("#notes")[0], 5);
+        });
+
+        // Prevent dropping files that are not PDFs
+        const fileInput = document.getElementById('fileupload');
+
+        fileInput.addEventListener('drop', (event) =>
+        {
+            for (let i = 0; i < event.dataTransfer.files.length; i++)
+            {
+                let file = event.dataTransfer.files[i];
+                if (!file.type.startsWith("application/pdf"))
+                {
+                    alert("Only PDFs are allowed");
+                    event.preventDefault();
+                    break;
+                }
+            }
         });
 
         function mark_document_for_removal(document_id)
