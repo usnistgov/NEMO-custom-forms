@@ -108,6 +108,7 @@ class CustomFormForm(forms.ModelForm):
 def custom_forms(request, custom_form_template_id=None):
     user: User = request.user
     selected_template = CustomFormPDFTemplate.objects.filter(id=custom_form_template_id).first()
+    only_show_my_requests = bool(request.GET.get("only_show_my_requests", False))
     if not selected_template:
         # Select the first template that the user can see/create
         available_templates = available_templates_for_user_to_see(user)
@@ -124,7 +125,11 @@ def custom_forms(request, custom_form_template_id=None):
             .prefetch_related("customformdocuments_set", "template__customformaction_set", "customformactionrecord_set")
         )
 
-    if not selected_template.can_user_view_all(user) and not selected_template.can_user_approve(user):
+    if (
+        only_show_my_requests
+        or not selected_template.can_user_view_all(user)
+        and not selected_template.can_user_approve(user)
+    ):
         # Restrict the list to the ones users have created
         custom_form_list = custom_form_list.filter(creator=user)
 
@@ -155,6 +160,7 @@ def custom_forms(request, custom_form_template_id=None):
 
     dictionary = {
         "page": page,
+        "only_show_my_requests": only_show_my_requests,
         "user_can_add": selected_template.can_user_create(user),
         "user_can_view_all": selected_template.can_user_view_all(user),
         "template_columns": get_ordered_columns(selected_template, default_columns),

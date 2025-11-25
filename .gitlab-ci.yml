@@ -13,10 +13,6 @@ variables:
     - python ./run_tests.py
 
 
-Test python 3.9:
-  <<: *test
-  image: python:3.9
-
 Test python 3.10:
   <<: *test
   image: python:3.10
