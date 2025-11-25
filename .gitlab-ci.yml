@@ -11,6 +11,7 @@ variables:
   script:
     - python -m pip install ."[NEMO]"
     - python ./run_tests.py
+  tags: [marina-docker]
 
 
 Test python 3.10:
@@ -40,6 +41,7 @@ Build Package:
     refs:
       - $CI_DEFAULT_BRANCH
       - tags
+  tags: [marina-docker]
 
 Release to PyPI:
   image: python:3
@@ -51,3 +53,4 @@ Release to PyPI:
     - twine upload --user $PYPI_USER --password $PYPI_PASSWORD ./dist/nemo_custom_forms*
   only:
     - tags
+  tags: [marina-docker]
