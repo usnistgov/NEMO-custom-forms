@@ -10,22 +10,39 @@
                style="width:100%;
                       max-width:600px;
                       font-family: 'Avenir Next', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'">
-            <tr>
-                <td align="center" style="color: white; background: #5bc0de; padding: 50px 0" bgcolor="#5bc0de">
-                    <h1 style="max-width: 90%; margin: 0 auto; padding: 0;">
-                        {{ custom_form.template.name|upper }} #{{ custom_form.form_number|default:custom_form.id|upper }}: UPDATE ({{ custom_form.customformactionrecord_set.count }} OF {{ custom_form.template.customformaction_set.count }})
-                    </h1>
-                </td>
-            </tr>
-            <tr>
-                <td style="padding: 10px;">
-                    <p>Dear {{ custom_form.creator.first_name }},</p>
-                    <p>{{ action_record.action_taken_by.first_name }} has completed the following action: {{ action_record.label }}.</p>
-                    <p>
-                        You can follow the status of your {{ custom_form.template.name }} <a href="{% absolute_url 'custom_forms' custom_form.template.id %}">here</a>.
-                    </p>
-                </td>
-            </tr>
+            {% if custom_form.status == 2 %}
+                {# Request was denied #}
+                <tr>
+                    <td align="center" style="color: white; background: #d9534f; padding: 50px 0" bgcolor="#d9534f">
+                        <h1 style="max-width: 90%; margin: 0 auto; padding: 0;">
+                            {{ custom_form.template.name|upper }} #{{ custom_form.form_number|default:custom_form.id|upper }}: REJECTED
+                        </h1>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px;">
+                        <p>Dear {{ custom_form.creator.first_name }},</p>
+                        <p>Your request was denied by {{ action_record.action_taken_by.first_name }}.</p>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td align="center" style="color: white; background: #5bc0de; padding: 50px 0" bgcolor="#5bc0de">
+                        <h1 style="max-width: 90%; margin: 0 auto; padding: 0;">
+                            {{ custom_form.template.name|upper }} #{{ custom_form.form_number|default:custom_form.id|upper }}: UPDATE ({{ custom_form.customformactionrecord_set.count }} OF {{ custom_form.template.customformaction_set.count }})
+                        </h1>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px;">
+                        <p>Dear {{ custom_form.creator.first_name }},</p>
+                        <p>{{ action_record.action_taken_by.first_name }} has completed the following action: {{ action_record.label }}.</p>
+                        <p>
+                            You can follow the status of your {{ custom_form.template.name }} <a href="{% absolute_url 'custom_forms' custom_form.template.id %}">here</a>.
+                        </p>
+                    </td>
+                </tr>
+            {% endif %}
         </table>
         <!--[if mso]></td></tr></table><![endif]-->
     </body>
