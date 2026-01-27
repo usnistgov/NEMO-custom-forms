@@ -131,7 +131,7 @@ def add_signature_mappings_to_pdf(writer: PdfWriter, signature_mappings: Dict):
                                 )
 
 
-def add_stamp_to_all_pages(writer: PdfWriter, stamp: Image, stamp_color=None, scale=0.6):
+def add_stamp_to_all_pages(writer: PdfWriter, stamp: Image.Image, stamp_color=None, scale=0.6):
     """
     Adds a stamp image to all pages in a PDF. The function allows customizing
     the color of the stamp, and the size scaling. The stamp is applied
@@ -223,12 +223,14 @@ def get_bytes_from_url_document(document_url) -> bytes:
     return response.content
 
 
-def create_signature_image(signature_text, within_box=(), max_font_size=None, padding=None, color=None) -> Image:
+def create_signature_image(signature_text, within_box=(), max_font_size=None, padding=None, color=None) -> Image.Image:
     sig_font_path = staticfiles_storage.path("NEMO_custom_forms/fonts/dancing_script.ttf")
     return create_image_from_text(signature_text, within_box, max_font_size, padding, color, font_path=sig_font_path)
 
 
-def create_image_from_text(text, within_box=(), max_font_size=None, padding=None, color=None, font_path=None) -> Image:
+def create_image_from_text(
+    text, within_box=(), max_font_size=None, padding=None, color=None, font_path=None
+) -> Optional[Image.Image]:
     """
     Generate an image from a given text. The font size is dynamically adjusted to fit within the
     specified bounding box or maximum size, ensuring the resulting image fits prescribed constraints. Additionally,
@@ -288,7 +290,7 @@ def create_image_from_text(text, within_box=(), max_font_size=None, padding=None
     return text_img
 
 
-def convert_image_to_pdf_page(image: Image):
+def convert_image_to_pdf_page(image: Image.Image):
     """
     Converts an image into a single-page PDF and extracts that page into a PDF page object.
 
