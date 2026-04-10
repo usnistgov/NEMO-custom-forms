@@ -22,7 +22,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "django",
-    "pypdf==6.9.2"
+    "pypdf==6.10.0"
 ]
 license = {file = "LICENSE"}
 
