@@ -78,7 +78,7 @@ class CustomFormSpecialMappingFormset(forms.BaseInlineFormSet):
     def add_fields(self, form, index):
         super().add_fields(form, index)
         form.fields["field_value_action"].queryset = CustomFormAction.objects.filter(
-            template=self.instance
+            template_id=self.instance.id
         ).select_related("template")
 
 
