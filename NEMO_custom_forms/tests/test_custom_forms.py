@@ -8,6 +8,7 @@ from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormAction,
     CustomFormAutomaticNumbering,
+    CustomFormDocuments,
     CustomFormPDFTemplate,
 )
 from NEMO_custom_forms.utilities import CUSTOM_FORM_CURRENT_NUMBER_PREFIX, custom_forms_current_numbers
@@ -232,3 +233,49 @@ class CustomFormsTest(TestCase):
         automatic_numbering.full_clean()
         automatic_numbering.save()
         self.assertTrue(automatic_numbering.next_custom_form_number(self.user))
+
+    def test_custom_form_documents_is_allowed(self):
+        creator, _ = create_user_and_project(is_staff=False)
+        reviewer_staff, _ = create_user_and_project(is_staff=True)
+        reviewer_group_user, _ = create_user_and_project(is_staff=False)
+        unauthorized_user, _ = create_user_and_project(is_staff=False)
+
+        reviewer_group = Group.objects.create(name="Reviewer Group")
+        reviewer_group_user.groups.add(reviewer_group)
+
+        custom_form_template = CustomFormPDFTemplate.objects.create(name="Document Template Test")
+        custom_form = CustomForm.objects.create(template=custom_form_template, creator=creator)
+        document = CustomFormDocuments.objects.create(custom_form=custom_form)
+
+        # Before any actions/roles are configured on the template:
+        # Creator is allowed to see the document, others are not
+        self.assertTrue(document.is_allowed(creator))
+        self.assertFalse(document.is_allowed(reviewer_staff))
+        self.assertFalse(document.is_allowed(reviewer_group_user))
+        self.assertFalse(document.is_allowed(unauthorized_user))
+
+        # Add staff action
+        action_staff = CustomFormAction.objects.create(template=custom_form_template, rank=1, role="is_staff")
+        self.assertTrue(document.is_allowed(creator))
+        self.assertTrue(document.is_allowed(reviewer_staff))
+        self.assertFalse(document.is_allowed(reviewer_group_user))
+        self.assertFalse(document.is_allowed(unauthorized_user))
+
+        # Add group action
+        action_group = CustomFormAction.objects.create(template=custom_form_template, rank=2, role=reviewer_group.id)
+        self.assertTrue(document.is_allowed(creator))
+        self.assertTrue(document.is_allowed(reviewer_staff))
+        self.assertTrue(document.is_allowed(reviewer_group_user))
+        self.assertFalse(document.is_allowed(unauthorized_user))
+
+        # When group user is removed from reviewer group, they lose permission
+        reviewer_group_user.groups.remove(reviewer_group)
+        self.assertFalse(document.is_allowed(reviewer_group_user))
+
+        # When staff user loses staff privileges, they lose permission
+        reviewer_staff.is_staff = False
+        reviewer_staff.save()
+        self.assertFalse(document.is_allowed(reviewer_staff))
+
+        # Creator remains allowed regardless
+        self.assertTrue(document.is_allowed(creator))

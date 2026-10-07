@@ -761,6 +761,9 @@ class CustomFormDocuments(BaseDocumentModel):
     def get_filename_upload(self, filename):
         return f"{MEDIA_PROTECTED}/custom_forms/{self.custom_form_id}/{filename}"
 
+    def is_allowed(self, user: User):
+        return self.custom_form.template.can_user_approve(user) or self.custom_form.creator == user
+
     class Meta(BaseDocumentModel.Meta):
         verbose_name_plural = "Custom form documents"
         ordering = ["display_order", "document_type__display_order"]
