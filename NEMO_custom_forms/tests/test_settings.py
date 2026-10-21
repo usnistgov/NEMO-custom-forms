@@ -1,6 +1,7 @@
 DEBUG = True
 AUTH_USER_MODEL = "NEMO.User"
 
+LANGUAGE_CODE = "custom"
 DATETIME_FORMAT = "l, F jS, Y @ g:i A"
 DATE_FORMAT = "m/d/Y"
 TIME_FORMAT = "g:i A"

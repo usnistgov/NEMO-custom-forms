@@ -4,7 +4,7 @@ import re
 
 from NEMO.mixins import ModelAdminRedirectMixin
 from NEMO.models import User
-from NEMO.utilities import copy_media_file, new_model_copy
+from NEMO.utilities import copy_media_file, get_full_url, new_model_copy
 from NEMO.widgets.dynamic_form import admin_render_dynamic_form_preview
 from django import forms
 from django.contrib import admin, messages
@@ -129,7 +129,7 @@ class CustomFormPDFTemplateForm(forms.ModelForm):
 @admin.register(CustomFormPDFTemplate)
 class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     form = CustomFormPDFTemplateForm
-    list_display = ["name", "enabled", "form", "get_create_permissions", "get_view_all_permissions"]
+    list_display = ["name", "enabled", "form", "get_create_permissions", "get_view_all_permissions", "get_link"]
     list_filter = ["enabled"]
     readonly_fields = ["_pdf_form_fields", "_form_fields_preview"]
     inlines = [CustomFormActionAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
@@ -167,6 +167,10 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
 
     def _form_fields_preview(self, obj: CustomFormPDFTemplate):
         return admin_render_dynamic_form_preview(obj, "form_fields")
+
+    @admin.display(description="Link")
+    def get_link(self, obj: CustomFormPDFTemplate):
+        return mark_safe(f'<a href="{get_full_url(obj.get_absolute_url())}">View</a>')
 
     @admin.display(description="View all permissions", ordering="view_all_permissions")
     def get_view_all_permissions(self, obj: CustomFormPDFTemplate):

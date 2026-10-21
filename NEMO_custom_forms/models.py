@@ -14,7 +14,15 @@ from NEMO.fields import (
     MultiRoleGroupPermissionChoiceField,
     RoleGroupPermissionChoiceField,
 )
-from NEMO.models import BaseCategory, BaseDocumentModel, BaseModel, Customization, SerializationByNameModel, User
+from NEMO.models import (
+    BaseCategory,
+    BaseDocumentModel,
+    BaseModel,
+    ContactInformation,
+    Customization,
+    SerializationByNameModel,
+    User,
+)
 from NEMO.typing import QuerySetType
 from NEMO.utilities import (
     document_filename_upload,
@@ -36,6 +44,7 @@ from django.db import models, transaction
 from django.dispatch import receiver
 from django.template import Context, Template
 from django.template.defaultfilters import yesno
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
@@ -92,6 +101,9 @@ class CustomFormPDFTemplate(SerializationByNameModel):
             )
         ),
     )
+
+    def get_absolute_url(self):
+        return reverse("custom_forms", kwargs={"custom_form_template_id": self.pk})
 
     def get_filename_upload(self, filename):
         from django.template.defaultfilters import slugify
@@ -359,6 +371,7 @@ class CustomFormSpecialMapping(BaseModel):
     class FieldValue(models.TextChoices):  # Inner Class
         FORM_CREATOR = "creator", _("Form creator")
         FORM_CREATOR_EMAIL = "creator_email", _("Form creator email")
+        FORM_CREATOR_PHONE = "creator_phone", _("Form creator contact phone")
         FORM_CREATION_TIME = "creation_time", _("Form creation time")
         FORM_NUMBER = "number", _("Form number")
         FORM_ACTION_TAKEN = "action_taken", _("Form action taken")
@@ -458,6 +471,12 @@ class CustomFormSpecialMapping(BaseModel):
             return custom_form.creator.get_name()
         elif self.field_value == self.FieldValue.FORM_CREATOR_EMAIL:
             return custom_form.creator.email
+        elif self.field_value == self.FieldValue.FORM_CREATOR_PHONE:
+            try:
+                contact = custom_form.creator.contactinformation
+                return contact.mobile_phone or contact.office_phone
+            except ContactInformation.DoesNotExist:
+                pass
         elif self.field_value == self.FieldValue.FORM_CREATION_TIME:
             return format_datetime(custom_form.creation_time, "SHORT_DATE_FORMAT")
         elif self.field_value == self.FieldValue.FORM_NUMBER:
