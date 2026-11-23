@@ -1,6 +1,6 @@
 [project]
 name = "NEMO-custom-forms"
-version = "1.4.2"
+version = "1.5.0"
 description = "Plugin for NEMO allowing creation, rendering and approval of custom forms for users/staff"
 keywords = ["NEMO"]
 readme = "README.md"
@@ -14,17 +14,18 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Framework :: Django :: 5.2",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 requires-python = ">=3.10"
 dependencies = [
     "django",
-    "pypdf==6.21.1"
+    "pypdf==6.21.4",
 ]
-license = {file = "LICENSE"}
+license-files = ["LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/usnistgov/NEMO-custom-forms"
@@ -43,7 +44,7 @@ include = ["NEMO_custom_forms*"]
 NEMO_custom_forms = ["static/**/*", "templates/**/*"]
 
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.black]

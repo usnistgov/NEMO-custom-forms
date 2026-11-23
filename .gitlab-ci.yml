@@ -14,21 +14,25 @@ variables:
   tags: [marina-docker]
 
 
-Test python 3.10:
-  <<: *test
-  image: python:3.10
-
 Test python 3.11:
   <<: *test
-  image: python:3.11
+  image: python:3.11-slim
 
 Test python 3.12:
   <<: *test
-  image: python:3.12
+  image: python:3.12-slim
 
 Test python 3.13:
   <<: *test
   image: python:3.13
+
+Test python 3.14:
+  <<: *test
+  image: python:3.14-slim
+
+Test python 3.15:
+  <<: *test
+  image: python:3.15-slim
 
 Build Package:
   image: python:3

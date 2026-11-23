@@ -23,10 +23,14 @@
                 <tr>
                     <td>{{ custom_form_template.name }}</td>
                     <td>
-                        {% with content_type=custom_form_template|content_type %}
-                            <a href="#"
-                               onclick="open_doc('{% url 'media_view' popup='true' content_type_id=content_type.id document_id=custom_form_template.id %}')">{{ custom_form_template.filename }}</a>
-                        {% endwith %}
+                        {% if custom_form_template.form %}
+                            {% with content_type=custom_form_template|content_type %}
+                                <a href="#"
+                                   onclick="open_doc('{% url 'media_view' popup='true' content_type_id=content_type.id document_id=custom_form_template.id %}')">{{ custom_form_template.filename }}</a>
+                            {% endwith %}
+                        {% else %}
+                            <span class="text-muted">None (Web only)</span>
+                        {% endif %}
                     </td>
                     <td>{{ custom_form_template.special_mappings_display|safe|linebreaksbr }}</td>
                     <td>{{ custom_form_template.actions_display|safe|linebreaksbr }}</td>

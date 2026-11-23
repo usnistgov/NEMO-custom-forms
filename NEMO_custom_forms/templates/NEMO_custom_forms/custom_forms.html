@@ -54,8 +54,10 @@
                             {% endif %}
                         {% endfor %}
                         <td class="text-center text-nowrap">
-                            {% url 'render_custom_form_pdf' custom_form.id as render_custom_form_pdf_url %}
-                            {% button size="small" type="export" value="Generate pdf" url=render_custom_form_pdf_url %}
+                            {% if custom_form.template.form %}
+                                {% url 'render_custom_form_pdf' custom_form.id as render_custom_form_pdf_url %}
+                                {% button size="small" type="export" value="Generate pdf" url=render_custom_form_pdf_url %}
+                            {% endif %}
                             {% if custom_form.notes %}
                                 {% button icon="glyphicon-info-sign" type="warn" size="small" value="Notes" title=custom_form.notes|default_if_none:""|linebreaksbr data_toggle="tooltip-notes" %}
                             {% endif %}

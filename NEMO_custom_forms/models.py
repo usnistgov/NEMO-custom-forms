@@ -82,7 +82,11 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         ),
     )
     form = models.FileField(
-        upload_to=document_filename_upload, validators=[validate_pdf_form], help_text=_("The pdf form")
+        upload_to=document_filename_upload,
+        validators=[validate_pdf_form],
+        blank=True,
+        null=True,
+        help_text=_("The optional PDF form"),
     )
     form_fields = models.TextField(help_text=_("JSON formatted fields list"))
     notes_placeholder = models.CharField(
@@ -111,9 +115,13 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         return f"{MEDIA_PROTECTED}/custom_forms/templates/{slugify(self.name)}.pdf"
 
     def pdf_form_fields(self) -> KeysView[str]:
+        if not self.form:
+            return []
         return get_pdf_form_field_names(self.form.file)
 
     def pdf_form_field_states(self, field_name: str) -> List[str]:
+        if not self.form:
+            return []
         return get_pdf_form_field_states_for_field(self.form.file, field_name)
 
     def form_fields_json(self) -> List:
@@ -142,10 +150,10 @@ class CustomFormPDFTemplate(SerializationByNameModel):
         )
 
     def link(self):
-        return self.form.url
+        return self.form.url if self.form else ""
 
     def filename(self):
-        return os.path.basename(self.form.name)
+        return os.path.basename(self.form.name) if self.form else ""
 
     def next_custom_form_number(self, user: User, save=False) -> Optional[str]:
         if hasattr(self, "customformautomaticnumbering"):
@@ -204,7 +212,8 @@ def auto_delete_file_on_form_template_delete(sender, instance: CustomFormPDFTemp
 @receiver(models.signals.pre_save, sender=CustomFormPDFTemplate)
 def auto_update_file_on_form_template_change(sender, instance: CustomFormPDFTemplate, **kwargs):
     """Updates old file from filesystem when corresponding `CustomFormPDFTemplate` object is updated with new file."""
-    return update_media_file_on_model_update(instance, "form")
+    if instance.form:
+        return update_media_file_on_model_update(instance, "form")
 
 
 class CustomFormAutomaticNumbering(BaseModel):
@@ -427,7 +436,7 @@ class CustomFormSpecialMapping(BaseModel):
             raise ValidationError(
                 {"field_value_boolean": _("This field only applies to field value 'Form action taken'")}
             )
-        if self.template_id:
+        if self.template_id and self.template.form:
             if self.field_name not in self.template.pdf_form_fields():
                 raise ValidationError({"field_name": _("This field name could not be found in the template fields")})
             if self.field_value == self.FieldValue.FORM_ACTION_TAKEN:

@@ -38,9 +38,10 @@ def duplicate_custom_form_template(modeladmin, request, queryset):
             if CustomFormPDFTemplate.objects.filter(name=template_copy.name).exists():
                 messages.error(request, f"Template with name {template_copy.name} already exists. Skipping.")
             else:
-                new_form_name = template_copy.get_filename_upload(os.path.basename(template.form.name))
-                copy_media_file(template.form.name, new_form_name)
-                template_copy.form.name = new_form_name
+                if template.form:
+                    new_form_name = template_copy.get_filename_upload(os.path.basename(template.form.name))
+                    copy_media_file(template.form.name, new_form_name)
+                    template_copy.form.name = new_form_name
                 template_copy.save()
                 for display_column in template.customformdisplaycolumn_set.all():
                     display_column_copy = new_model_copy(display_column)

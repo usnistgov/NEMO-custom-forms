@@ -495,5 +495,4 @@ def send_custom_form_status_update(action_record: CustomFormActionRecord, notifi
         )
 
 
-# TODO: make it optional to have a PDF form (generate it from the form itself)
 # TODO: add filters in custom form page
