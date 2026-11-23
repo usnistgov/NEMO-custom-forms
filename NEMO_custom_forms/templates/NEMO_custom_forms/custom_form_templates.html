@@ -1,4 +1,4 @@
-{% extends 'NEMO_custom_forms/custom_forms_base.html' %}
+{% extends "NEMO_custom_forms/custom_forms_base.html" %}
 {% load custom_tags_and_filters %}
 {% block add_button %}
     {% admin_add_url 'NEMO_custom_forms' 'customformpdftemplate' request.path as add_custom_form_template_url %}
@@ -11,8 +11,8 @@
            style="margin-bottom: 0">
         <thead>
             <tr>
-                <th>{% include 'pagination/pagination_column.html' with order_by='name' name='Name' %}</th>
-                <th>{% include 'pagination/pagination_column.html' with order_by='form' name='PDF' %}</th>
+                <th>{% include "pagination/pagination_column.html" with order_by="name" name="Name" %}</th>
+                <th>{% include "pagination/pagination_column.html" with order_by="form" name="PDF" %}</th>
                 <th>Special mappings</th>
                 <th>Actions</th>
                 <th class="text-right button-column-minimum"></th>

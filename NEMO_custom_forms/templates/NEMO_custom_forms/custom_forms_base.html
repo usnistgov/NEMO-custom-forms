@@ -2,9 +2,9 @@
 {% load custom_tags_and_filters %}
 {% block extrahead %}
     {% load static %}
-    <link rel="stylesheet" type="text/css" href="{% static "NEMO_custom_forms/custom-forms.css" %}" />
-    <script type="text/javascript" src="{% static "datetimepicker/bootstrap-datetimepicker.js" %}"></script>
-    <link rel="stylesheet" type="text/css" href="{% static "datetimepicker/bootstrap-datetimepicker.css" %}" />
+    <link rel="stylesheet" href="{% static "NEMO_custom_forms/custom-forms.css" %}" />
+    <script src="{% static "datetimepicker/bootstrap-datetimepicker.js" %}"></script>
+    <link rel="stylesheet" href="{% static "datetimepicker/bootstrap-datetimepicker.css" %}" />
 {% endblock %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
@@ -55,24 +55,30 @@
                 {% if custom_form_templates_url not in request.path %}
                     {% block before_pagination %}
                         <div class="row" style="margin-top: 15px;">
-                            <div class="col-md-9 col-xs-8" style="margin-bottom: {% if page %}-15px{% else %}0px{% endif %}">
+                            <div class="col-md-9 col-xs-8"
+                                 style="margin-bottom: {% if page %}-15px{% else %}0px{% endif %}">
                                 <form class="form-horizontal" method="get">
                                     <div class="form-group">
-                                        <label class="col-xs-5 col-sm-4 col-md-3 col-lg-2 control-label" for="form_status">Status</label>
+                                        <label class="col-xs-5 col-sm-4 col-md-3 col-lg-2 control-label"
+                                               for="form_status">Status</label>
                                         <div class="col-xs-7 col-md-6">
                                             <select id="form_status" name="form_status" class="form-control">
                                                 <option value="" selected>All</option>
                                                 {% for status in form_statuses %}
-                                                    <option value="{{ status.0 }}" {% if status.0 == selected_status|to_int %}selected{% endif %}>{{ status.1 }}</option>
+                                                    <option value="{{ status.0 }}"
+                                                            {% if status.0 == selected_status|to_int %}selected{% endif %}>{{ status.1 }}</option>
                                                 {% endfor %}
                                             </select>
                                         </div>
                                     </div>
                                     {% if selected_template.customformaction_set.count > 1 %}
                                         <div class="form-group">
-                                            <label class="col-xs-5 col-sm-4 col-md-3 col-lg-2 control-label" for="form_action_rank">Current action</label>
+                                            <label class="col-xs-5 col-sm-4 col-md-3 col-lg-2 control-label"
+                                                   for="form_action_rank">Current action</label>
                                             <div class="col-xs-7 col-md-6">
-                                                <select id="form_action_rank" name="form_action_rank" class="form-control">
+                                                <select id="form_action_rank"
+                                                        name="form_action_rank"
+                                                        class="form-control">
                                                     <option value="" selected>Any</option>
                                                     {% for possible_action in selected_template.customformaction_set.all %}
                                                         <option value="{{ possible_action.rank }}"
@@ -114,13 +120,17 @@
                 {% if page %}
                     {% with paginator=page.paginator %}
                         {% block pagination_header %}
-                            <div class="pagination pull-right" style="clear: both">{% include "pagination/pagination_selector.html" %}</div>
+                            <div class="pagination pull-right" style="clear: both">
+                                {% include "pagination/pagination_selector.html" %}
+                            </div>
                         {% endblock %}
                         <div class="table-responsive" style="width: 100%">
                             {% block pagination_content %}{% endblock %}
                         </div>
                         {% block pagination_footer %}
-                            <div class="pagination pull-right" style="margin-bottom: 0">{% include "pagination/pagination_pages.html" %}</div>
+                            <div class="pagination pull-right" style="margin-bottom: 0">
+                                {% include "pagination/pagination_pages.html" %}
+                            </div>
                         {% endblock %}
                     {% endwith %}
                 {% else %}

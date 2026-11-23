@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% load custom_tags_and_filters %}
 {% load custom_form_tags %}
 {% block title %}
@@ -150,7 +150,9 @@
                                     {% else %}
                                         [Other]
                                     {% endif %}
-                                    <a href="{{ d.document.url }}" target="_blank" style="margin-right: 5px">{{ d.filename }}</a>
+                                    <a href="{{ d.document.url }}"
+                                       target="_blank"
+                                       style="margin-right: 5px">{{ d.filename }}</a>
                                 </li>
                             {% endfor %}
                         {% endfor %}
