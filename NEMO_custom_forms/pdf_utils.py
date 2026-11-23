@@ -15,7 +15,7 @@ from django.core.files.storage import default_storage
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf.constants import (
     AnnotationDictionaryAttributes,
-    CatalogDictionary,
+    CatalogAttributes,
     FieldDictionaryAttributes,
     InteractiveFormDictEntries,
 )
@@ -75,8 +75,8 @@ def flatten_pdf(writer: PdfWriter):
     :param writer: Instance of PdfWriter, representing the PDF document to be flattened.
     :type writer: PdfWriter
     """
-    if CatalogDictionary.ACRO_FORM in writer.root_object:
-        acro_form: Union[Dict, PdfObject] = writer.root_object[CatalogDictionary.ACRO_FORM]
+    if CatalogAttributes.ACRO_FORM in writer.root_object:
+        acro_form: Union[Dict, PdfObject] = writer.root_object[CatalogAttributes.ACRO_FORM]
         if InteractiveFormDictEntries.Fields in acro_form:
             for field in acro_form[InteractiveFormDictEntries.Fields]:
                 field_dict = field.get_object()
