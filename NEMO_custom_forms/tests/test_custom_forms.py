@@ -1,17 +1,26 @@
+import csv
+from io import StringIO
+from unittest.mock import Mock
+
 from NEMO.models import Customization
 from NEMO.tests.test_utilities import create_user_and_project
 from django.apps import apps
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.core.exceptions import ValidationError
+from django.test import RequestFactory, TestCase
 
+from NEMO_custom_forms.admin import duplicate_custom_form_template
 from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormAction,
     CustomFormAutomaticNumbering,
     CustomFormDocuments,
+    CustomFormExportColumn,
     CustomFormPDFTemplate,
+    CustomFormTableColumn,
 )
 from NEMO_custom_forms.utilities import CUSTOM_FORM_CURRENT_NUMBER_PREFIX, custom_forms_current_numbers
+from NEMO_custom_forms.views.custom_forms import export_custom_forms, get_ordered_columns
 
 
 class CustomFormsTest(TestCase):
@@ -21,6 +30,81 @@ class CustomFormsTest(TestCase):
 
     def setUp(self):
         self.user, self.project = create_user_and_project(is_staff=True)
+
+    def test_table_and_export_columns_are_independent(self):
+        template = CustomFormPDFTemplate.objects.create(
+            name="Column separation",
+            form_fields='[{"name": "table_field", "type": "text"}, {"name": "export_field", "type": "text"}]',
+        )
+        table_column = CustomFormTableColumn.objects.create(
+            template=template, field_name="table_field", display_order=1, display_name="Table field"
+        )
+        export_column = CustomFormExportColumn(
+            template=template, field_name="export_field", display_order=1, display_name="Export field"
+        )
+        export_column.full_clean()
+        export_column.save()
+
+        default_columns = [
+            ("form_number", "Form number"),
+            ("creation_time", "Created"),
+            ("creator", "Creator"),
+            ("status", "Status"),
+        ]
+        table_columns = get_ordered_columns(template.customformtablecolumn_set.all(), default_columns)
+        self.assertEqual(table_columns[1], (table_column.field_name, table_column.display_name))
+
+        response = export_custom_forms(RequestFactory().get("/"), template, CustomForm.objects.none())
+        csv_headers = [header.lower() for header in next(csv.reader(StringIO(response.content.decode())))]
+        self.assertIn("export field", csv_headers)
+        self.assertNotIn("table field", csv_headers)
+
+    def test_table_and_export_columns_validate_order_independently(self):
+        template = CustomFormPDFTemplate.objects.create(
+            name="Column order validation", form_fields='[{"name": "shared_field", "type": "text"}]'
+        )
+        CustomFormTableColumn.objects.create(
+            template=template, field_name="shared_field", display_order=1, display_name="Table field"
+        )
+        export_column = CustomFormExportColumn(
+            template=template, field_name="shared_field", display_order=1, display_name="Export field"
+        )
+        export_column.full_clean()
+        export_column.save()
+
+        with self.assertRaises(ValidationError):
+            CustomFormTableColumn(
+                template=template, field_name="shared_field", display_order=1, display_name="Duplicate table field"
+            ).full_clean()
+        with self.assertRaises(ValidationError):
+            CustomFormExportColumn(
+                template=template, field_name="shared_field", display_order=1, display_name="Duplicate export field"
+            ).full_clean()
+
+    def test_duplicate_template_copies_both_column_configurations(self):
+        template = CustomFormPDFTemplate.objects.create(
+            name="Template with columns", form_fields='[{"name": "shared_field", "type": "text"}]'
+        )
+        CustomFormTableColumn.objects.create(
+            template=template, field_name="shared_field", display_order=1, display_name="Table field"
+        )
+        CustomFormExportColumn.objects.create(
+            template=template, field_name="shared_field", display_order=1, display_name="Export field"
+        )
+        request = RequestFactory().post("/")
+        request.__dict__["_messages"] = Mock()
+
+        duplicate_custom_form_template(None, request, CustomFormPDFTemplate.objects.filter(pk=template.pk))
+
+        template_copy = CustomFormPDFTemplate.objects.get(name="Copy of Template with columns")
+        self.assertEqual(
+            list(template_copy.customformtablecolumn_set.values_list("field_name", "display_name")),
+            [("shared_field", "Table field")],
+        )
+        self.assertEqual(
+            list(template_copy.customformexportcolumn_set.values_list("field_name", "display_name")),
+            [("shared_field", "Export field")],
+        )
 
     def test_next_custom_form_number(self):
         custom_form_template = CustomFormPDFTemplate.objects.create(name="Form 1", id=1)

@@ -18,11 +18,12 @@ from NEMO_custom_forms.models import (
     CustomFormAction,
     CustomFormActionRecord,
     CustomFormAutomaticNumbering,
-    CustomFormDisplayColumn,
     CustomFormDocumentType,
     CustomFormDocuments,
+    CustomFormExportColumn,
     CustomFormPDFTemplate,
     CustomFormSpecialMapping,
+    CustomFormTableColumn,
     re_ends_with_number,
 )
 from NEMO_custom_forms.utilities import custom_forms_current_numbers
@@ -43,10 +44,14 @@ def duplicate_custom_form_template(modeladmin, request, queryset):
                     copy_media_file(template.form.name, new_form_name)
                     template_copy.form.name = new_form_name
                 template_copy.save()
-                for display_column in template.customformdisplaycolumn_set.all():
-                    display_column_copy = new_model_copy(display_column)
-                    display_column_copy.template = template_copy
-                    display_column_copy.save()
+                for column in template.customformtablecolumn_set.all():
+                    column_copy = new_model_copy(column)
+                    column_copy.template = template_copy
+                    column_copy.save()
+                for column in template.customformexportcolumn_set.all():
+                    column_copy = new_model_copy(column)
+                    column_copy.template = template_copy
+                    column_copy.save()
                 old_to_new_action_ids = {}
                 for action in template.customformaction_set.all():
                     action_copy = new_model_copy(action)
@@ -101,8 +106,16 @@ class CustomFormSpecialMappingAdminInline(admin.TabularInline):
         return queryset
 
 
-class CustomFormDisplayColumnInline(admin.TabularInline):
-    model = CustomFormDisplayColumn
+class CustomFormTableColumnInline(admin.TabularInline):
+    model = CustomFormTableColumn
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request).select_related("template")
+        return queryset
+
+
+class CustomFormExportColumnInline(admin.TabularInline):
+    model = CustomFormExportColumn
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request).select_related("template")
@@ -133,7 +146,12 @@ class CustomFormPDFTemplateAdmin(ModelAdminRedirectMixin, admin.ModelAdmin):
     list_display = ["name", "enabled", "form", "get_create_permissions", "get_view_all_permissions", "get_link"]
     list_filter = ["enabled"]
     readonly_fields = ["_pdf_form_fields", "_form_fields_preview"]
-    inlines = [CustomFormActionAdminInline, CustomFormSpecialMappingAdminInline, CustomFormDisplayColumnInline]
+    inlines = [
+        CustomFormActionAdminInline,
+        CustomFormSpecialMappingAdminInline,
+        CustomFormTableColumnInline,
+        CustomFormExportColumnInline,
+    ]
     actions = [duplicate_custom_form_template]
 
     def save_form(self, request, form, change):

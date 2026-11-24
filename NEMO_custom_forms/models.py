@@ -514,18 +514,18 @@ class CustomFormSpecialMapping(BaseModel):
         return f"{self.field_name} -> {self.field_value}{rank}"
 
 
-class CustomFormDisplayColumn(BaseModel):
+class CustomFormColumn(BaseModel):
     template = models.ForeignKey(CustomFormPDFTemplate, on_delete=models.CASCADE)
     field_name = models.CharField(
         max_length=CHAR_FIELD_MEDIUM_LENGTH,
-        help_text=_("The pdf template field name whose value will be displayed in the table"),
+        help_text=_("The pdf template field name whose value will be used in the column"),
     )
     display_order = models.PositiveIntegerField(help_text=_("The display order of the column."))
     display_name = models.CharField(
         max_length=CHAR_FIELD_SMALL_LENGTH,
         null=True,
         blank=True,
-        help_text=_("The column name to be displayed in the table. If not provided, the field name will be used"),
+        help_text=_("The column name. If not provided, the field name will be used"),
     )
 
     def clean(self):
@@ -544,15 +544,24 @@ class CustomFormDisplayColumn(BaseModel):
             except:
                 # we are skipping this on purpose, since any errors from creating dynamic forms will be raised in the template itself
                 pass
-            if self.display_order in self.template.customformdisplaycolumn_set.exclude(id=self.id).values_list(
-                "display_order", flat=True
-            ):
+            if self.display_order in self.__class__.objects.filter(template_id=self.template_id).exclude(
+                id=self.id
+            ).values_list("display_order", flat=True):
                 errors["display_order"] = _("This display order is already in use for another column")
         if errors:
             raise ValidationError(errors)
 
     class Meta:
+        abstract = True
         ordering = ["display_order"]
+
+
+class CustomFormTableColumn(CustomFormColumn):
+    pass
+
+
+class CustomFormExportColumn(CustomFormColumn):
+    pass
 
 
 class CustomForm(BaseModel):

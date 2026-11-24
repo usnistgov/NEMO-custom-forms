@@ -1,5 +1,4 @@
 from collections import OrderedDict, defaultdict
-from typing import Dict, List, Optional, Tuple
 
 from NEMO.decorators import administrator_required
 from NEMO.exceptions import RequiredUnansweredQuestionsException
@@ -48,7 +47,7 @@ from NEMO_custom_forms.utilities import (
 )
 
 
-def available_templates_for_user_to_see(user) -> List[CustomFormPDFTemplate]:
+def available_templates_for_user_to_see(user) -> list[CustomFormPDFTemplate]:
     available_templates = []
     for available_template in CustomFormPDFTemplate.objects.filter(enabled=True):
         if (
@@ -60,7 +59,7 @@ def available_templates_for_user_to_see(user) -> List[CustomFormPDFTemplate]:
     return available_templates
 
 
-def available_templates_for_user_to_add(user) -> List[CustomFormPDFTemplate]:
+def available_templates_for_user_to_add(user) -> list[CustomFormPDFTemplate]:
     return [
         available_template
         for available_template in CustomFormPDFTemplate.objects.filter(enabled=True)
@@ -74,7 +73,7 @@ def can_view_any_custom_forms(user) -> bool:
 
 class CustomFormForm(forms.ModelForm):
 
-    def __init__(self, *args, template: CustomFormPDFTemplate = None, **kwargs):
+    def __init__(self, *args, template: CustomFormPDFTemplate | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         # remove the form number field if there is already a form number or if it should be generated automatically
         existing_form_number = self.instance and self.instance.form_number
@@ -163,7 +162,7 @@ def custom_forms(request, custom_form_template_id=None):
         "only_show_my_requests": only_show_my_requests,
         "user_can_add": selected_template.can_user_create(user),
         "user_can_view_all": selected_template.can_user_view_all(user),
-        "template_columns": get_ordered_columns(selected_template, default_columns),
+        "template_columns": get_ordered_columns(selected_template.customformtablecolumn_set.all(), default_columns),
         "default_columns": default_columns,
         **get_dictionary_for_base(request, selected_template),
     }
@@ -171,10 +170,9 @@ def custom_forms(request, custom_form_template_id=None):
 
 
 # Reorder columns to fill in the gaps with the provided default columns
-def get_ordered_columns(selected_template: CustomFormPDFTemplate, default_columns: List[Tuple[str, str]]) -> Dict:
-    template_columns = {
-        column.display_order: (column.field_name, column.display_name)
-        for column in selected_template.customformdisplaycolumn_set.all()
+def get_ordered_columns(columns, default_columns: list[tuple[str, str]]) -> dict:
+    template_columns: dict[int, tuple[str, str | None]] = {
+        column.display_order: (column.field_name, column.display_name) for column in columns
     }
 
     if not template_columns:
@@ -209,7 +207,7 @@ def custom_form_templates(request):
     return render(request, "NEMO_custom_forms/custom_form_templates.html", dictionary)
 
 
-def get_dictionary_for_base(request, template: CustomFormPDFTemplate = None) -> Dict:
+def get_dictionary_for_base(request, template: CustomFormPDFTemplate | None = None) -> dict:
     # Grab and organize notifications by template
     notifications = Notification.objects.filter(notification_type=CUSTOM_FORM_NOTIFICATION, user=request.user)
     custom_form_notifications = defaultdict(int)
@@ -236,7 +234,7 @@ def export_custom_forms(request, selected_template: CustomFormPDFTemplate, custo
         ("creator", "Creator"),
         ("status", "Status"),
     ]
-    columns = get_ordered_columns(selected_template, default_columns).values()
+    columns = get_ordered_columns(selected_template.customformexportcolumn_set.all(), default_columns).values()
     table.headers.extend([(column[0], column[1] or column[0]) for column in columns])
     table.add_header(("cancelled", "Cancelled on")),
     table.add_header(("cancelled_by", "Cancelled by")),
@@ -260,7 +258,7 @@ def export_custom_forms(request, selected_template: CustomFormPDFTemplate, custo
             "document": get_full_url(reverse("render_custom_form_pdf", args=[custom_form.pk]), request),
         }
         data_input = custom_form.get_template_data_input()
-        for key in get_ordered_columns(selected_template, []).values():
+        for key in get_ordered_columns(selected_template.customformexportcolumn_set.all(), []).values():
             row[key[0]] = data_input.get(key[0])
         for action in selected_template.customformaction_set.all():
             action_record = custom_form.get_action_record_for_rank(action.rank)
@@ -282,13 +280,13 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
     action = CustomFormAction.objects.filter(id=request.POST.get("action_id")).first()
 
     try:
-        custom_form: Optional[CustomForm] = CustomForm.objects.get(id=custom_form_id)
+        custom_form: CustomForm = CustomForm.objects.get(id=custom_form_id)
         form_template = custom_form.template
     except CustomForm.DoesNotExist:
         if action:
             raise
-        templates: List[CustomFormPDFTemplate] = available_templates_for_user_to_add(user)
-        custom_form = None
+        templates: list[CustomFormPDFTemplate] = available_templates_for_user_to_add(user)
+        custom_form: CustomForm | None = None
         try:
             if len(templates) == 1:
                 form_template = templates[0]
@@ -358,7 +356,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                     # all this need to happen at the same time or be rolled back
                     # auto-generate form number, form saving, and actions
 
-                    automatic_numbering: CustomFormAutomaticNumbering = getattr(
+                    automatic_numbering: CustomFormAutomaticNumbering | None = getattr(
                         form_template, "customformautomaticnumbering", None
                     )
                     auto_generate_parameter = request.POST.get("auto_generate", "false") == "true"
@@ -376,7 +374,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
                         form.instance.form_number = automatic_numbering.next_custom_form_number(user, save=True)
 
                     if not action or action.can_edit_form:
-                        custom_form = form.save()
+                        custom_form: CustomForm = form.save()
 
                         # Handle file uploads
                         document_type_id = request.POST.get("document_type_id", None) or None
@@ -407,7 +405,7 @@ def create_custom_form(request, custom_form_template_id=None, custom_form_id=Non
 @require_GET
 def generate_custom_form_number(request, custom_form_template_id):
     custom_form_template = get_object_or_404(CustomFormPDFTemplate, pk=custom_form_template_id)
-    automatic_numbering: CustomFormAutomaticNumbering = getattr(
+    automatic_numbering: CustomFormAutomaticNumbering | None = getattr(
         custom_form_template, "customformautomaticnumbering", None
     )
     if automatic_numbering:
@@ -449,7 +447,7 @@ def render_custom_form_pdf(request, custom_form_id):
     return pdf_response
 
 
-def send_custom_form_notification_email(custom_form: CustomForm, edit):
+def send_custom_form_notification_email(custom_form: CustomForm, edit: bool):
     # First, send form received to creator
     notification_template = get_media_file_contents("custom_form_received_email.html")
     if notification_template and not edit:
@@ -476,7 +474,7 @@ def send_custom_form_notification_email(custom_form: CustomForm, edit):
         )
 
 
-def send_custom_form_status_update(action_record: CustomFormActionRecord, notification_email: List[str]):
+def send_custom_form_status_update(action_record: CustomFormActionRecord, notification_email: list[str]):
     custom_form = action_record.custom_form
     number_of_actions = custom_form.template.customformaction_set.count()
     number_of_actions_recorded = custom_form.customformactionrecord_set.count()
