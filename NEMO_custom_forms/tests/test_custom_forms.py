@@ -5,11 +5,13 @@ from unittest.mock import Mock
 from NEMO.models import Customization
 from NEMO.tests.test_utilities import create_user_and_project
 from django.apps import apps
+from django.contrib import admin
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
-from NEMO_custom_forms.admin import duplicate_custom_form_template
+from NEMO_custom_forms.admin import CustomFormAdmin, duplicate_custom_form_template
 from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormAction,
@@ -30,6 +32,17 @@ class CustomFormsTest(TestCase):
 
     def setUp(self):
         self.user, self.project = create_user_and_project(is_staff=True)
+
+    def test_custom_form_admin_view_link_uses_existing_form_view(self):
+        template = CustomFormPDFTemplate.objects.create(name="Form view link")
+        custom_form = CustomForm.objects.create(template=template, creator=self.user)
+        form_url = reverse("edit_custom_form", kwargs={"custom_form_id": custom_form.pk})
+
+        self.assertEqual(custom_form.get_absolute_url(), form_url)
+        self.assertIn("get_link", CustomFormAdmin.list_display)
+        custom_form_admin = CustomFormAdmin(CustomForm, admin.site)
+        self.assertIn(form_url, custom_form_admin.get_link(custom_form))
+        self.assertEqual(self.client.get(form_url).status_code, 302)
 
     def test_table_and_export_columns_are_independent(self):
         template = CustomFormPDFTemplate.objects.create(

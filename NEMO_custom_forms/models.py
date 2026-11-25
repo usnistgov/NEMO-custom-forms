@@ -601,6 +601,9 @@ class CustomForm(BaseModel):
     class Meta:
         ordering = ["-last_updated"]
 
+    def get_absolute_url(self):
+        return reverse("edit_custom_form", kwargs={"custom_form_id": self.pk})
+
     @property
     def name(self) -> str:
         return self.form_number or f"{self.get_status_display()} Form {self.id}"

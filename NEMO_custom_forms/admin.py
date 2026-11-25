@@ -228,7 +228,16 @@ class CustomFormDocumentTypeAdmin(admin.ModelAdmin):
 @admin.register(CustomForm)
 class CustomFormAdmin(admin.ModelAdmin):
     inlines = [CustomFormDocumentsInline, CustomFormActionRecordInline]
-    list_display = ["creation_time", "form_number", "status", "last_updated", "creator", "template", "cancelled"]
+    list_display = [
+        "creation_time",
+        "form_number",
+        "status",
+        "last_updated",
+        "creator",
+        "template",
+        "cancelled",
+        "get_link",
+    ]
     list_filter = [
         ("creator", admin.RelatedOnlyFieldListFilter),
         ("template", admin.RelatedOnlyFieldListFilter),
@@ -241,6 +250,10 @@ class CustomFormAdmin(admin.ModelAdmin):
         # This is needed so that the notifications for these forms are also deleted
         for obj in queryset:
             obj.delete()
+
+    @admin.display(description="Link")
+    def get_link(self, obj: CustomForm):
+        return mark_safe(f'<a href="{get_full_url(obj.get_absolute_url())}">View</a>')
 
 
 class CustomFormAutomaticNumberingForm(forms.ModelForm):
