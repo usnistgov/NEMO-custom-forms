@@ -245,6 +245,7 @@ class CustomFormAdmin(admin.ModelAdmin):
         "cancelled",
     ]
     date_hierarchy = "last_updated"
+    readonly_fields = ["creation_time", "last_updated"]
 
     def delete_queryset(self, request, queryset):
         # This is needed so that the notifications for these forms are also deleted

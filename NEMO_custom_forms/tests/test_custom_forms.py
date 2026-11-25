@@ -1,4 +1,5 @@
 import csv
+from datetime import datetime
 from io import StringIO
 from unittest.mock import Mock
 
@@ -10,11 +11,13 @@ from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from NEMO_custom_forms.admin import CustomFormAdmin, duplicate_custom_form_template
 from NEMO_custom_forms.models import (
     CustomForm,
     CustomFormAction,
+    CustomFormActionRecord,
     CustomFormAutomaticNumbering,
     CustomFormDocuments,
     CustomFormExportColumn,
@@ -32,6 +35,22 @@ class CustomFormsTest(TestCase):
 
     def setUp(self):
         self.user, self.project = create_user_and_project(is_staff=True)
+
+    def create_date_filter_template(self):
+        return CustomFormPDFTemplate.objects.create(
+            name="Date filter template", form_fields="[]", view_all_permissions=["is_staff"]
+        )
+
+    def create_form_at(self, template, form_number, creation_time, creator=None, status=CustomForm.FormStatus.PENDING):
+        custom_form = CustomForm.objects.create(
+            template=template, creator=creator or self.user, form_number=form_number, status=status
+        )
+        CustomForm.objects.filter(pk=custom_form.pk).update(creation_time=creation_time)
+        return custom_form
+
+    def get_form_list(self, template, params):
+        self.client.force_login(self.user)
+        return self.client.get(reverse("custom_forms", kwargs={"custom_form_template_id": template.pk}), params)
 
     def test_custom_form_admin_view_link_uses_existing_form_view(self):
         template = CustomFormPDFTemplate.objects.create(name="Form view link")
@@ -71,6 +90,143 @@ class CustomFormsTest(TestCase):
         csv_headers = [header.lower() for header in next(csv.reader(StringIO(response.content.decode())))]
         self.assertIn("export field", csv_headers)
         self.assertNotIn("table field", csv_headers)
+
+    def test_creation_date_filters_are_inclusive_and_used_for_csv_export(self):
+        template = self.create_date_filter_template()
+        local_timezone = timezone.get_current_timezone()
+        start_of_day = timezone.make_aware(datetime(2025, 1, 1, 0, 0), local_timezone)
+        end_of_day = timezone.make_aware(datetime(2025, 1, 1, 23, 59, 59), local_timezone)
+        next_day = timezone.make_aware(datetime(2025, 1, 2, 0, 0, 1), local_timezone)
+        self.create_form_at(template, "at-start", start_of_day)
+        self.create_form_at(template, "at-end", end_of_day)
+        self.create_form_at(template, "next-day", next_day)
+
+        response = self.get_form_list(template, {"start": "01/01/2025", "end": "01/01/2025"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({form.form_number for form in response.context["page"]}, {"at-start", "at-end"})
+
+        response = self.get_form_list(template, {"start": "01/01/2025", "end": "01/01/2025", "csv": "true"})
+        exported_form_numbers = {row[0] for row in list(csv.reader(StringIO(response.content.decode())))[1:]}
+        self.assertEqual(exported_form_numbers, {"at-start", "at-end"})
+
+    def test_creation_date_filters_allow_open_ended_and_empty_ranges(self):
+        template = self.create_date_filter_template()
+        local_timezone = timezone.get_current_timezone()
+        first_day = timezone.make_aware(datetime(2025, 1, 1, 12, 0), local_timezone)
+        second_day = timezone.make_aware(datetime(2025, 1, 2, 12, 0), local_timezone)
+        self.create_form_at(template, "first-day", first_day)
+        self.create_form_at(template, "second-day", second_day)
+
+        no_filter = self.get_form_list(template, {})
+        start_only = self.get_form_list(template, {"start": "01/02/2025"})
+        end_only = self.get_form_list(template, {"end": "01/01/2025"})
+
+        self.assertEqual({form.form_number for form in no_filter.context["page"]}, {"first-day", "second-day"})
+        self.assertEqual({form.form_number for form in start_only.context["page"]}, {"second-day"})
+        self.assertEqual({form.form_number for form in end_only.context["page"]}, {"first-day"})
+
+    def test_date_filters_combine_with_status_ownership_and_pagination(self):
+        template = self.create_date_filter_template()
+        in_range = timezone.make_aware(datetime(2025, 1, 1, 12, 0), timezone.get_current_timezone())
+        out_of_range = timezone.make_aware(datetime(2025, 1, 2, 12, 0), timezone.get_current_timezone())
+        another_user, _ = create_user_and_project(is_staff=False)
+        self.create_form_at(template, "approved-one", in_range, status=CustomForm.FormStatus.APPROVED)
+        self.create_form_at(template, "approved-two", in_range, status=CustomForm.FormStatus.APPROVED)
+        self.create_form_at(template, "pending", in_range)
+        self.create_form_at(template, "outside", out_of_range, status=CustomForm.FormStatus.APPROVED)
+        self.create_form_at(
+            template, "other-user", in_range, creator=another_user, status=CustomForm.FormStatus.APPROVED
+        )
+
+        params = {
+            "start": "01/01/2025",
+            "end": "01/01/2025",
+            "form_status": str(CustomForm.FormStatus.APPROVED),
+            "only_show_my_requests": "on",
+            "pp": "1",
+        }
+        response = self.get_form_list(template, params)
+
+        page_form_numbers = {form.form_number for form in response.context["page"]}
+        self.assertEqual(len(page_form_numbers), 1)
+        self.assertTrue(page_form_numbers.issubset({"approved-one", "approved-two"}))
+        self.assertContains(response, "start=01%2F01%2F2025")
+        self.assertContains(response, "form_status=1")
+
+        export_response = self.get_form_list(template, {**params, "csv": "true"})
+        exported_form_numbers = {row[0] for row in list(csv.reader(StringIO(export_response.content.decode())))[1:]}
+        self.assertEqual(exported_form_numbers, {"approved-one", "approved-two"})
+
+    def test_all_list_filters_are_bound_and_applied_to_csv(self):
+        template = self.create_date_filter_template()
+        CustomFormAction.objects.create(template=template, rank=1, role="is_staff")
+        CustomFormAction.objects.create(template=template, rank=2, role="is_staff")
+        another_user, _ = create_user_and_project(is_staff=False)
+        current_action_form = self.create_form_at(template, "mine-current-action", timezone.now())
+        other_user_form = self.create_form_at(
+            template, "other-user-current-action", timezone.now(), creator=another_user
+        )
+        self.create_form_at(template, "mine-first-action", timezone.now())
+        for custom_form in (current_action_form, other_user_form):
+            CustomFormActionRecord.objects.create(
+                custom_form=custom_form, action_rank=1, action_taken_by=self.user, action_result=True
+            )
+
+        params = {"form_status": "0", "form_action_rank": "2", "only_show_my_requests": "on"}
+        response = self.get_form_list(template, params)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({form.form_number for form in response.context["page"]}, {"mine-current-action"})
+        filter_form = response.context["filter_form"]
+        self.assertEqual(filter_form["form_status"].value(), "0")
+        self.assertEqual(filter_form["form_action_rank"].value(), "2")
+        self.assertTrue(filter_form["only_show_my_requests"].value())
+
+        export_response = self.get_form_list(template, {**params, "csv": "true"})
+        exported_form_numbers = {row[0] for row in list(csv.reader(StringIO(export_response.content.decode())))[1:]}
+        self.assertEqual(exported_form_numbers, {"mine-current-action"})
+
+    def test_invalid_status_or_action_filter_does_not_show_forms_or_export(self):
+        template = self.create_date_filter_template()
+        CustomFormAction.objects.create(template=template, rank=1, role="is_staff")
+        CustomFormAction.objects.create(template=template, rank=2, role="is_staff")
+        self.create_form_at(template, "existing-form", timezone.now())
+
+        for params, invalid_field in (
+            ({"form_status": "999"}, "form_status"),
+            ({"form_action_rank": "99"}, "form_action_rank"),
+        ):
+            with self.subTest(params=params):
+                response = self.get_form_list(template, params)
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.context["page"].object_list)
+                self.assertIn(invalid_field, response.context["filter_form"].errors)
+
+                export_response = self.get_form_list(template, {**params, "csv": "true"})
+                self.assertEqual(export_response.status_code, 400)
+
+    def test_invalid_or_reversed_date_filters_do_not_show_unfiltered_forms_or_export(self):
+        template = self.create_date_filter_template()
+        self.create_form_at(
+            template,
+            "existing-form",
+            timezone.make_aware(datetime(2025, 1, 1, 12, 0), timezone.get_current_timezone()),
+        )
+
+        invalid_response = self.get_form_list(template, {"start": "not-a-date"})
+        self.assertEqual(invalid_response.status_code, 200)
+        self.assertFalse(invalid_response.context["page"].object_list)
+        self.assertTrue(invalid_response.context["filter_form"].errors)
+
+        reversed_params = {"start": "01/02/2025", "end": "01/01/2025"}
+        reversed_response = self.get_form_list(template, reversed_params)
+        self.assertEqual(reversed_response.status_code, 200)
+        self.assertFalse(reversed_response.context["page"].object_list)
+        self.assertTrue(reversed_response.context["filter_form"].errors)
+
+        export_response = self.get_form_list(template, {**reversed_params, "csv": "true"})
+        self.assertEqual(export_response.status_code, 400)
 
     def test_table_and_export_columns_validate_order_independently(self):
         template = CustomFormPDFTemplate.objects.create(

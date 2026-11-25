@@ -10,7 +10,6 @@ from NEMO.utilities import (
     format_datetime,
     get_full_url,
     get_model_instance,
-    quiet_int,
     render_email_template,
     send_mail,
 )
@@ -27,6 +26,7 @@ from django.db.models import Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.text import capfirst
 from django.views.decorators.http import require_GET, require_http_methods
 
 from NEMO_custom_forms.models import (
@@ -101,13 +101,50 @@ class CustomFormForm(forms.ModelForm):
         ]
 
 
+class CustomFormFilterForm(forms.Form):
+    start = forms.DateField(required=False)
+    end = forms.DateField(required=False)
+    form_status = forms.TypedChoiceField(
+        choices=[("", "All"), *CustomForm.FormStatus.choices],
+        coerce=lambda value: int(value),
+        empty_value=None,
+        required=False,
+        label="Status",
+        widget=forms.Select(attrs={"class": "form-control", "id": "form_status"}),
+    )
+    form_action_rank = forms.TypedChoiceField(
+        choices=[("", "Any")],
+        coerce=lambda value: int(value),
+        empty_value=None,
+        required=False,
+        label="Current action",
+        widget=forms.Select(attrs={"class": "form-control", "id": "form_action_rank"}),
+    )
+    only_show_my_requests = forms.BooleanField(
+        required=False, widget=forms.CheckboxInput(attrs={"id": "only_show_my_requests"})
+    )
+
+    def __init__(self, *args, actions=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        action_choices = [(action.rank, capfirst(action.pending_status())) for action in actions or []]
+        self.fields["form_action_rank"].choices = [("", "Any"), *action_choices]
+
+    def clean(self):
+        cleaned_data = super().clean() or {}
+        start = cleaned_data.get("start")
+        end = cleaned_data.get("end")
+        if start and end and end < start:
+            self.add_error("end", "The end date must be on or after the start date")
+        return cleaned_data
+
+
 @login_required
 @user_passes_test(can_view_any_custom_forms)
 @require_GET
 def custom_forms(request, custom_form_template_id=None):
     user: User = request.user
     selected_template = CustomFormPDFTemplate.objects.filter(id=custom_form_template_id).first()
-    only_show_my_requests = bool(request.GET.get("only_show_my_requests", False))
+    csv_export = bool(request.GET.get("csv", False))
     if not selected_template:
         # Select the first template that the user can see/create
         available_templates = available_templates_for_user_to_see(user)
@@ -124,6 +161,9 @@ def custom_forms(request, custom_form_template_id=None):
             .prefetch_related("customformdocuments_set", "template__customformaction_set", "customformactionrecord_set")
         )
 
+    filter_form = CustomFormFilterForm(request.GET, actions=selected_template.customformaction_set.all())
+    filters_valid = filter_form.is_valid()
+    only_show_my_requests = filters_valid and filter_form.cleaned_data["only_show_my_requests"]
     if (
         only_show_my_requests
         or not selected_template.can_user_view_all(user)
@@ -132,18 +172,26 @@ def custom_forms(request, custom_form_template_id=None):
         # Restrict the list to the ones users have created
         custom_form_list = custom_form_list.filter(creator=user)
 
-    form_status = request.GET.get("form_status")
-    if form_status:
-        custom_form_list = custom_form_list.filter(status=form_status)
-    form_action_rank = quiet_int(request.GET.get("form_action_rank"))
-    if form_action_rank:
-        custom_form_list = custom_form_list.exclude(status__in=CustomForm.FormStatus.finished())
-        if form_action_rank == 1:
-            custom_form_list = custom_form_list.filter(customformactionrecord__isnull=True)
-        else:
-            custom_form_list = custom_form_list.filter(
-                customformactionrecord__action_rank__in=[form_action_rank - 1]
-            ).exclude(customformactionrecord__action_rank__in=[form_action_rank])
+    if filters_valid:
+        if filter_form.cleaned_data["start"]:
+            custom_form_list = custom_form_list.filter(creation_time__date__gte=filter_form.cleaned_data["start"])
+        if filter_form.cleaned_data["end"]:
+            custom_form_list = custom_form_list.filter(creation_time__date__lte=filter_form.cleaned_data["end"])
+        if filter_form.cleaned_data["form_status"] is not None:
+            custom_form_list = custom_form_list.filter(status=filter_form.cleaned_data["form_status"])
+        form_action_rank = filter_form.cleaned_data["form_action_rank"]
+        if form_action_rank is not None:
+            custom_form_list = custom_form_list.exclude(status__in=CustomForm.FormStatus.finished())
+            if form_action_rank == 1:
+                custom_form_list = custom_form_list.filter(customformactionrecord__isnull=True)
+            else:
+                custom_form_list = custom_form_list.filter(
+                    customformactionrecord__action_rank__in=[form_action_rank - 1]
+                ).exclude(customformactionrecord__action_rank__in=[form_action_rank])
+    elif csv_export:
+        return HttpResponseBadRequest(f"Invalid filters: {filter_form.errors.as_text()}")
+    else:
+        custom_form_list = custom_form_list.none()
 
     page = SortedPaginator(custom_form_list, request, order_by="-last_updated").get_current_page()
 
@@ -156,10 +204,15 @@ def custom_forms(request, custom_form_template_id=None):
         ("creator", "Creator"),
         ("status", "Status"),
     ]
+    request_parameters = request.GET.copy()
+    for pagination_param in ("p", "pp", "o", "csv"):
+        request_parameters.pop(pagination_param, None)
 
     dictionary = {
         "page": page,
+        "extra_params": request_parameters.urlencode(),
         "only_show_my_requests": only_show_my_requests,
+        "filter_form": filter_form,
         "user_can_add": selected_template.can_user_create(user),
         "user_can_view_all": selected_template.can_user_view_all(user),
         "template_columns": get_ordered_columns(selected_template.customformtablecolumn_set.all(), default_columns),
